@@ -1,0 +1,207 @@
+# sentinelpi.yaml — SentinelPi Configuration
+# ============================================
+# Copy this file to /etc/sentinelpi/sentinelpi.yaml and customize.
+# All settings have safe defaults; you only need to configure what differs.
+#
+# QUICK START:
+#   1. Set network.interfaces to your monitored interface (ip link show)
+#   2. Set network.subnets to your local subnet
+#   3. Set network.gateway_ip to your router's IP
+#   4. Add your trusted devices to trusted_devices
+#   5. Run: sentinelpi --check-config to validate
+
+# =============================================================================
+# NETWORK
+# =============================================================================
+network:
+  # Network interface(s) to monitor
+  # Use 'ip link show' or 'ifconfig' to list interfaces
+  interfaces:
+    - eth0
+  # ip4: - wlan0   # Uncomment for WiFi monitoring
+
+  # Local subnet(s) in CIDR notation
+  subnets:
+    - 192.168.1.0/24
+  # - 10.0.0.0/24   # Add additional subnets if needed
+
+  # Your router/gateway IP address — important for ARP spoofing detection
+  gateway_ip: "192.168.1.1"
+  # Known good gateway MAC address (from 'arp -n | grep <gateway_ip>')
+  # If set, any change to this MAC triggers a CRITICAL alert
+  gateway_mac: ""   # e.g., "aa:bb:cc:dd:ee:ff"
+
+# =============================================================================
+# TRUSTED DEVICES
+# =============================================================================
+# Devices known to belong to you — new device alerts are suppressed for these.
+# You can specify by IP, MAC, or both. Name and notes are for your reference.
+trusted_devices: []
+  # - ip: "192.168.1.100"
+  #   mac: "aa:bb:cc:dd:ee:ff"
+  #   name: "Desktop"
+  #   notes: "Main workstation"
+  # - ip: "192.168.1.101"
+  #   name: "Laptop"
+  # - mac: "dc:a6:32:xx:xx:xx"
+  #   name: "Raspberry Pi"
+
+# =============================================================================
+# MONITORING FEATURES
+# =============================================================================
+monitoring:
+  # Sensitivity profile: conservative | balanced | aggressive
+  # conservative: fewer alerts, higher thresholds — good for noisy networks
+  # balanced: recommended for most home/small office networks
+  # aggressive: lower thresholds — more alerts, may produce more noise
+  sensitivity_profile: balanced
+
+  # Active discovery: occasional ARP ping to find passive devices
+  # Disabled by default — passive ARP monitoring is usually sufficient
+  active_discovery_enabled: false
+  active_discovery_interval_seconds: 300
+
+  # DNS monitoring via packet capture
+  dns_monitoring_enabled: true
+
+  # Parse /var/log/auth.log for SSH brute force, new logins, sudo events
+  auth_log_enabled: true
+  auth_log_path: /var/log/auth.log
+
+  # File integrity monitoring for high-value Pi config files
+  file_integrity_enabled: false
+  file_integrity_paths:
+    - /etc/passwd
+    - /etc/shadow
+    - /etc/sudoers
+    - /etc/ssh/sshd_config
+    - /etc/hosts
+
+  # GeoIP country lookups — requires GeoLite2-Country.mmdb
+  # Download from: https://dev.maxmind.com/geoip/geolite2-free-geolocation-data
+  geo_enabled: false
+  geo_db_path: /var/lib/sentinelpi/GeoLite2-Country.mmdb
+
+  # Packet capture via scapy (requires root or CAP_NET_RAW)
+  # If disabled, proc polling is used (no root required, slightly less detail)
+  packet_capture_enabled: true
+
+  # Quiet hours: suppress non-critical alerts between these hours (24h format)
+  quiet_hours_enabled: false
+  quiet_hours_start: 23   # 11 PM
+  quiet_hours_end: 7      # 7 AM
+
+  # How long to passively observe before treating deviations as anomalies
+  # Increase on noisy networks; 24h is a good default
+  baseline_learning_hours: 24
+
+# =============================================================================
+# ALERT THRESHOLDS
+# =============================================================================
+# These are the 'balanced' defaults. Use sensitivity_profile to scale them,
+# or override individual values here.
+thresholds:
+  # Port scan: unique ports probed per minute before flagging
+  port_scan_ports_per_minute: 15
+
+  # Connection spike: factor above hourly baseline before flagging
+  connection_spike_factor: 3.0
+
+  # Beacon detection: coefficient of variation (lower = more regular = more suspicious)
+  # 0.0 = perfectly regular, 1.0 = completely irregular
+  beacon_cv_threshold: 0.15
+
+  # Minimum number of connection intervals needed for beacon analysis
+  beacon_min_intervals: 8
+
+  # SSH brute force: failures in window before alerting
+  ssh_failures_threshold: 10
+  ssh_failures_window_seconds: 120
+
+  # ARP churn: seconds within which MAC changes are counted
+  arp_mac_change_window_seconds: 300
+
+  # Traffic spike: bytes per minute multiplier above baseline
+  traffic_spike_factor: 5.0
+
+  # DNS entropy: Shannon entropy threshold for DGA detection
+  dns_entropy_threshold: 3.8
+
+  # Lateral movement: unique internal admin-protocol targets from one host per minute
+  lateral_movement_dest_threshold: 5
+
+# =============================================================================
+# WHITELIST
+# =============================================================================
+# IPs/domains/ports to never alert on.
+# Use for known-good services that would otherwise trigger detectors.
+
+whitelist_ips: []
+  # - "192.168.1.200"  # NAS device that does a lot of SMB
+
+whitelist_domains: []
+  # - "update.microsoft.com"
+  # - "windowsupdate.com"
+
+whitelist_ports: []
+  # - 8080   # Internal web proxy
+
+# =============================================================================
+# DASHBOARD
+# =============================================================================
+dashboard:
+  enabled: true
+  host: "127.0.0.1"    # IMPORTANT: Keep as 127.0.0.1 unless you know what you're doing
+  port: 8888
+  debug: false
+  # Optional: protect dashboard with a token
+  # Provide via Authorization: Bearer <token> header or ?token=<token> query param
+  access_token: ""     # e.g., "mysecrettoken123"
+
+# =============================================================================
+# STORAGE
+# =============================================================================
+storage:
+  db_path: /var/lib/sentinelpi/sentinelpi.db
+  retention_days: 30
+  vacuum_interval_seconds: 86400   # Vacuum DB once per day
+
+# =============================================================================
+# LOGGING
+# =============================================================================
+logging:
+  level: INFO   # DEBUG, INFO, WARNING, ERROR
+  log_dir: /var/log/sentinelpi
+  max_bytes: 10485760    # 10 MB per log file
+  backup_count: 5        # Keep 5 rotated files
+  json_alerts_file: /var/log/sentinelpi/alerts.json
+
+# =============================================================================
+# NOTIFICATIONS
+# =============================================================================
+notifications:
+  # Email notifications
+  email_enabled: false
+  email_smtp_host: "localhost"
+  email_smtp_port: 25
+  email_smtp_tls: false
+  email_username: ""
+  email_password: ""
+  email_from: "sentinelpi@localhost"
+  email_to: []     # e.g., ["you@example.com"]
+  email_min_severity: high
+
+  # Webhook (Slack, Discord, ntfy.sh, Home Assistant, custom HTTP receiver)
+  webhook_enabled: false
+  webhook_url: ""
+  webhook_min_severity: medium
+  webhook_secret: ""   # Added as X-SentinelPi-Secret header
+
+# =============================================================================
+# REPORTING
+# =============================================================================
+reporting:
+  daily_report_enabled: true
+  daily_report_hour: 7    # 7 AM
+  weekly_report_enabled: true
+  weekly_report_day: 1    # Monday (0=Sunday, 1=Monday, ...)

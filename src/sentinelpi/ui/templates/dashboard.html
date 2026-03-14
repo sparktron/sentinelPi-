@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SentinelPi Dashboard</title>
+<style>
+  :root {
+    --bg: #0f1117; --surface: #1a1d27; --border: #2d3148;
+    --text: #e2e8f0; --muted: #94a3b8; --accent: #6366f1;
+    --info: #06b6d4; --low: #22c55e; --medium: #f59e0b;
+    --high: #ef4444; --critical: #dc2626;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'JetBrains Mono', 'Courier New', monospace; background: var(--bg); color: var(--text); padding: 1rem; }
+  h1 { color: var(--accent); font-size: 1.4rem; margin-bottom: 0.25rem; }
+  .subtitle { color: var(--muted); font-size: 0.8rem; margin-bottom: 1.5rem; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-bottom: 1.5rem; }
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 1rem; }
+  .card h3 { font-size: 0.75rem; color: var(--muted); text-transform: uppercase; margin-bottom: 0.5rem; }
+  .card .val { font-size: 1.8rem; font-weight: bold; }
+  .sev-info { color: var(--info); }
+  .sev-low { color: var(--low); }
+  .sev-medium { color: var(--medium); }
+  .sev-high { color: var(--high); }
+  .sev-critical { color: var(--critical); }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 0.7rem; font-weight: bold; text-transform: uppercase; }
+  .badge-info { background: #083344; color: var(--info); }
+  .badge-low { background: #052e16; color: var(--low); }
+  .badge-medium { background: #431407; color: var(--medium); }
+  .badge-high { background: #3f0a0a; color: var(--high); }
+  .badge-critical { background: #450a0a; color: var(--critical); }
+  table { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
+  th { background: var(--surface); color: var(--muted); text-transform: uppercase; font-size: 0.7rem; padding: 8px 12px; text-align: left; border-bottom: 1px solid var(--border); }
+  td { padding: 8px 12px; border-bottom: 1px solid var(--border); vertical-align: top; word-break: break-all; }
+  tr:hover td { background: rgba(99,102,241,0.05); }
+  .section { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; margin-bottom: 1.5rem; overflow: hidden; }
+  .section-header { padding: 0.75rem 1rem; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; }
+  .section-header h2 { font-size: 0.95rem; }
+  .section-content { overflow-x: auto; }
+  .action-btn { background: none; border: 1px solid var(--border); color: var(--muted); padding: 3px 8px; border-radius: 4px; cursor: pointer; font-size: 0.7rem; margin-left: 4px; }
+  .action-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .filters { padding: 0.5rem 1rem; border-bottom: 1px solid var(--border); display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center; }
+  input, select { background: var(--bg); border: 1px solid var(--border); color: var(--text); padding: 4px 8px; border-radius: 4px; font-size: 0.8rem; }
+  .loading { color: var(--muted); padding: 2rem; text-align: center; }
+  .description { color: var(--muted); font-size: 0.75rem; max-width: 400px; }
+  .rec { font-size: 0.7rem; color: #a78bfa; }
+  .refresh-note { font-size: 0.7rem; color: var(--muted); }
+  #status-bar { display: flex; gap: 1rem; font-size: 0.75rem; color: var(--muted); margin-bottom: 1rem; }
+</style>
+</head>
+<body>
+
+<h1>🛡 SentinelPi</h1>
+<p class="subtitle">Defensive Network Monitor — <span id="hostname">localhost</span></p>
+
+<div id="status-bar">
+  <span>Status: <span id="run-status" style="color:var(--low)">●</span> Running</span>
+  <span>Devices: <span id="device-count">—</span></span>
+  <span>Baseline: <span id="baseline-status">—</span></span>
+  <span>Last update: <span id="last-update">—</span></span>
+</div>
+
+<!-- Summary Cards -->
+<div class="grid" id="summary-grid">
+  <div class="card"><h3>Critical (24h)</h3><div class="val sev-critical" id="cnt-critical">—</div></div>
+  <div class="card"><h3>High (24h)</h3><div class="val sev-high" id="cnt-high">—</div></div>
+  <div class="card"><h3>Medium (24h)</h3><div class="val sev-medium" id="cnt-medium">—</div></div>
+  <div class="card"><h3>Low / Info (24h)</h3><div class="val sev-low" id="cnt-loinfo">—</div></div>
+</div>
+
+<!-- Alerts Table -->
+<div class="section">
+  <div class="section-header">
+    <h2>Recent Alerts</h2>
+    <span class="refresh-note">Auto-refresh 30s</span>
+  </div>
+  <div class="filters">
+    <select id="filter-sev">
+      <option value="">All Severities</option>
+      <option value="critical">Critical</option>
+      <option value="high">High</option>
+      <option value="medium">Medium</option>
+      <option value="low">Low</option>
+      <option value="info">Info</option>
+    </select>
+    <select id="filter-hours">
+      <option value="6">Last 6h</option>
+      <option value="24" selected>Last 24h</option>
+      <option value="72">Last 72h</option>
+      <option value="168">Last week</option>
+    </select>
+    <input type="text" id="filter-host" placeholder="Filter by host...">
+    <button class="action-btn" onclick="loadAlerts()">Refresh</button>
+  </div>
+  <div class="section-content">
+    <table id="alerts-table">
+      <thead>
+        <tr>
+          <th>Time</th><th>Severity</th><th>Category</th><th>Host</th>
+          <th>Title</th><th>Confidence</th><th>Actions</th>
+        </tr>
+      </thead>
+      <tbody id="alerts-body"><tr><td colspan="7" class="loading">Loading...</td></tr></tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Devices Table -->
+<div class="section">
+  <div class="section-header">
+    <h2>Device Inventory</h2>
+    <button class="action-btn" onclick="loadDevices()">Refresh</button>
+  </div>
+  <div class="section-content">
+    <table id="devices-table">
+      <thead>
+        <tr><th>IP</th><th>MAC</th><th>Hostname / Vendor</th><th>First Seen</th><th>Last Seen</th><th>Score</th><th>Flags</th></tr>
+      </thead>
+      <tbody id="devices-body"><tr><td colspan="7" class="loading">Loading...</td></tr></tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Top Suspicious Hosts -->
+<div class="section">
+  <div class="section-header"><h2>Most Suspicious Hosts</h2></div>
+  <div class="section-content">
+    <table>
+      <thead><tr><th>IP</th><th>MAC</th><th>Vendor</th><th>Suspicion Score</th><th>Alert Count</th></tr></thead>
+      <tbody id="suspicious-body"><tr><td colspan="5" class="loading">Loading...</td></tr></tbody>
+    </table>
+  </div>
+</div>
+
+<script>
+// Utility functions
+function fmtTime(iso) {
+  const d = new Date(iso);
+  return d.toLocaleString();
+}
+function sevBadge(sev) {
+  return `<span class="badge badge-${sev}">${sev}</span>`;
+}
+function scoreColor(score) {
+  if (score >= 5) return 'var(--critical)';
+  if (score >= 3) return 'var(--high)';
+  if (score >= 1) return 'var(--medium)';
+  return 'var(--low)';
+}
+function esc(s) {
+  const d = document.createElement('div');
+  d.textContent = s || '';
+  return d.innerHTML;
+}
+
+// Load status summary
+async function loadStatus() {
+  try {
+    const r = await fetch('/api/status');
+    const data = await r.json();
+    const counts = data.alert_counts_24h || {};
+    document.getElementById('cnt-critical').textContent = counts.critical || 0;
+    document.getElementById('cnt-high').textContent = counts.high || 0;
+    document.getElementById('cnt-medium').textContent = counts.medium || 0;
+    document.getElementById('cnt-loinfo').textContent = (counts.low || 0) + (counts.info || 0);
+    document.getElementById('device-count').textContent = data.device_count || 0;
+    const bl = data.baseline || {};
+    document.getElementById('baseline-status').textContent = bl.is_learning
+      ? `Learning (${Math.ceil(bl.learning_hours_remaining || 0)}h remaining)`
+      : `Active (${bl.known_domains || 0} domains, ${bl.known_destinations || 0} dests)`;
+    document.getElementById('last-update').textContent = new Date().toLocaleTimeString();
+  } catch(e) { console.error('Status load failed:', e); }
+}
+
+// Load alerts
+async function loadAlerts() {
+  const sev = document.getElementById('filter-sev').value;
+  const hours = document.getElementById('filter-hours').value;
+  const host = document.getElementById('filter-host').value;
+  let url = `/api/alerts?hours=${hours}&limit=200`;
+  if (sev) url += `&severity=${sev}`;
+  if (host) url += `&host=${encodeURIComponent(host)}`;
+
+  try {
+    const r = await fetch(url);
+    const alerts = await r.json();
+    const tbody = document.getElementById('alerts-body');
+    if (!alerts.length) {
+      tbody.innerHTML = '<tr><td colspan="7" class="loading">No alerts in this period.</td></tr>';
+      return;
+    }
+    tbody.innerHTML = alerts.map(a => `
+      <tr>
+        <td style="white-space:nowrap">${fmtTime(a.timestamp)}</td>
+        <td>${sevBadge(a.severity)}</td>
+        <td><small>${esc(a.category)}</small></td>
+        <td><code>${esc(a.affected_host)}</code>${a.related_host ? `<br><small>→ ${esc(a.related_host)}</small>` : ''}</td>
+        <td>
+          <strong>${esc(a.title)}</strong>
+          <div class="description">${esc(a.description)}</div>
+          ${a.recommended_action ? `<div class="rec">→ ${esc(a.recommended_action)}</div>` : ''}
+        </td>
+        <td>${Math.round(a.confidence * 100)}%</td>
+        <td>
+          <button class="action-btn" onclick="acknowledge('${esc(a.alert_id)}', this)">Ack</button>
+          <button class="action-btn" onclick="muteAlert('${esc(a.alert_id)}', this)">Mute</button>
+        </td>
+      </tr>
+    `).join('');
+  } catch(e) { console.error('Alerts load failed:', e); }
+}
+
+async function acknowledge(id, btn) {
+  await fetch(`/api/alerts/${id}/acknowledge`, {method: 'POST'});
+  btn.textContent = '✓';
+  btn.disabled = true;
+}
+
+async function muteAlert(id, btn) {
+  if (!confirm('Mute this alert type? Future duplicates will be suppressed.')) return;
+  await fetch(`/api/alerts/${id}/mute`, {method: 'POST'});
+  btn.textContent = 'Muted';
+  btn.disabled = true;
+}
+
+// Load devices
+async function loadDevices() {
+  try {
+    const r = await fetch('/api/devices');
+    const devices = await r.json();
+    const tbody = document.getElementById('devices-body');
+    tbody.innerHTML = devices.map(d => `
+      <tr>
+        <td><code>${esc(d.ip)}</code></td>
+        <td><code>${esc(d.mac)}</code></td>
+        <td>${esc(d.hostname || '')}${d.vendor ? `<br><small style="color:var(--muted)">${esc(d.vendor)}</small>` : ''}</td>
+        <td><small>${fmtTime(d.first_seen)}</small></td>
+        <td><small>${fmtTime(d.last_seen)}</small></td>
+        <td style="color:${scoreColor(d.suspicion_score)}; font-weight:bold">${d.suspicion_score.toFixed(1)}</td>
+        <td>
+          ${d.is_gateway ? '<span class="badge badge-info">GW</span> ' : ''}
+          ${d.is_trusted ? '<span class="badge badge-low">TRUSTED</span>' : `<button class="action-btn" onclick="trustDevice('${esc(d.ip)}', this)">Trust</button>`}
+        </td>
+      </tr>
+    `).join('');
+  } catch(e) { console.error('Devices load failed:', e); }
+}
+
+async function trustDevice(ip, btn) {
+  await fetch(`/api/devices/${encodeURIComponent(ip)}/trust`, {method: 'POST'});
+  btn.textContent = 'Trusted';
+  btn.disabled = true;
+}
+
+// Load suspicious hosts
+async function loadSuspicious() {
+  try {
+    const r = await fetch('/api/suspicious');
+    const hosts = await r.json();
+    const tbody = document.getElementById('suspicious-body');
+    if (!hosts.length) {
+      tbody.innerHTML = '<tr><td colspan="5" class="loading">No suspicious hosts detected.</td></tr>';
+      return;
+    }
+    tbody.innerHTML = hosts.map(h => `
+      <tr>
+        <td><code>${esc(h.ip)}</code></td>
+        <td><code>${esc(h.mac)}</code></td>
+        <td>${esc(h.vendor || '—')}</td>
+        <td style="color:${scoreColor(h.suspicion_score)}; font-weight:bold">${parseFloat(h.suspicion_score).toFixed(2)}</td>
+        <td>${h.alert_count}</td>
+      </tr>
+    `).join('');
+  } catch(e) { console.error('Suspicious hosts load failed:', e); }
+}
+
+// Initial load
+loadStatus();
+loadAlerts();
+loadDevices();
+loadSuspicious();
+
+// Auto-refresh every 30 seconds
+setInterval(() => {
+  loadStatus();
+  loadAlerts();
+}, 30000);
+setInterval(loadDevices, 60000);
+setInterval(loadSuspicious, 60000);
+
+// Filter change handlers
+document.getElementById('filter-sev').addEventListener('change', loadAlerts);
+document.getElementById('filter-hours').addEventListener('change', loadAlerts);
+document.getElementById('filter-host').addEventListener('input', loadAlerts);
+</script>
+</body>
+</html>

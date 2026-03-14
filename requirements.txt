@@ -1,0 +1,26 @@
+# SentinelPi — Runtime Dependencies
+# ===================================
+# Minimal, well-justified dependencies for Raspberry Pi deployment.
+
+# Packet capture and network protocol analysis
+# Mature, widely-used library for passive sniffing and ARP parsing.
+# Requires CAP_NET_RAW or root for packet capture features.
+scapy>=2.5.0,<3.0
+
+# Process and system utilities
+# Used for process/socket enumeration, CPU/memory stats.
+# Works without root for most operations.
+psutil>=5.9.0,<6.0
+
+# Lightweight web dashboard framework
+# Minimal footprint; ships with a dev server adequate for localhost use.
+flask>=3.0.0,<4.0
+
+# Configuration file parsing
+pyyaml>=6.0,<7.0
+
+# HTTP client for webhook notifications and optional geolocation API
+requests>=2.31.0,<3.0
+
+# Robust date/time parsing for auth log analysis
+python-dateutil>=2.8.0,<3.0
