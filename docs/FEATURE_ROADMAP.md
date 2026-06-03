@@ -41,8 +41,12 @@ Make every alert more actionable without new detectors.
 - **Passive OS / device fingerprinting.** Use existing ARP/packet data + OUI vendor + open-port
   profile to classify devices (IoT camera, phone, laptop, server). Surfaces "a new IoT device just
   joined and is beaconing overseas."
-- **GeoIP everywhere.** You already have `GeoIPLookup`; attach country to every external connection
-  and add a "first connection to a new country for this host" detector.
+- ✅ **GeoIP everywhere.** "First connection to a new country for this host" detector.
+  _Shipped: `detectors/geo_country_detector.py` — per-host country baseline persisted in the new
+  `host_countries` table (schema v4); alerts MEDIUM on a first-seen country (after the learning
+  phase), staying silent without a GeoIP DB. Gated on `monitoring.geo_enabled`. Tests in
+  `test_geo_country_detector.py`. Follow-up: attach country to **every** external-connection alert
+  (broad enrichment of the other detectors), not just this one._
 - **ASN / hosting-provider tagging.** Connections to bulletproof/anonymizing ASNs (via an IP→ASN
   db) raise suspicion scores.
 

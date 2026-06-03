@@ -30,6 +30,7 @@ EXPECTED_TABLES = {
     "dns_observations",
     "connection_events",
     "file_hashes",
+    "host_countries",
 }
 
 
