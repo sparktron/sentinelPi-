@@ -119,6 +119,12 @@ class MonitoringConfig:
     # DNS monitoring (requires packet capture or system resolver hook)
     dns_monitoring_enabled: bool = True
 
+    # Encrypted-DNS (DoH/DoT) bypass detection — flag local clients talking
+    # DoH/DoT to public resolvers instead of your configured DNS.
+    doh_detection_enabled: bool = True
+    # Destination IPs allowed to serve encrypted DNS (e.g. your own DoH server).
+    doh_sanctioned_resolvers: List[str] = field(default_factory=list)
+
     # Auth log monitoring
     auth_log_enabled: bool = True
     auth_log_path: str = "/var/log/auth.log"

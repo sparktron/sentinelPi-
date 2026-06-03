@@ -33,8 +33,11 @@ Make every alert more actionable without new detectors.
   matching, on-disk cache, graceful degrade) + `detectors/threat_intel_detector.py`; opt-in via
   `threat_intel.enabled`. Tests in `test_threat_intel.py`. FireHOL feed can be added to the `FEEDS`
   catalog later._
-- **Local DNS-over-HTTPS / DoH detection.** Flag clients bypassing your DNS by talking DoH/DoT to
+- ✅ **Local DNS-over-HTTPS / DoH detection.** Flag clients bypassing your DNS by talking DoH/DoT to
   known resolvers — a common exfil/evasion vector and directly complements the existing DNS detector.
+  _Shipped: `detectors/doh_detector.py` — DoT (TCP 853) to any external host, DoH (TCP 443) to a
+  curated set of known public resolver IPs; sanctioned-resolver allowlist; opt-in via
+  `monitoring.doh_detection_enabled` (default on). Tests in `test_doh_detector.py`._
 - **Passive OS / device fingerprinting.** Use existing ARP/packet data + OUI vendor + open-port
   profile to classify devices (IoT camera, phone, laptop, server). Surfaces "a new IoT device just
   joined and is beaconing overseas."

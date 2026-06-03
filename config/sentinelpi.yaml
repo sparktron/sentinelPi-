@@ -64,6 +64,12 @@ monitoring:
   # DNS monitoring via packet capture
   dns_monitoring_enabled: true
 
+  # Flag local clients using encrypted DNS (DoH on 443 to a known resolver, or
+  # DoT on 853) to bypass your configured DNS. List any IPs allowed to serve
+  # encrypted DNS (e.g. your own DoH server) in doh_sanctioned_resolvers.
+  doh_detection_enabled: true
+  doh_sanctioned_resolvers: []   # e.g., ["192.168.1.2"]
+
   # Parse /var/log/auth.log for SSH brute force, new logins, sudo events
   auth_log_enabled: true
   auth_log_path: /var/log/auth.log
