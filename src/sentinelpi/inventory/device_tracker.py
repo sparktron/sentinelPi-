@@ -27,6 +27,7 @@ from ..models import Alert, AlertCategory, AlertStatus, Device, Severity
 from ..capture.proc_reader import ARPEntry, read_arp_table
 from ..storage.database import Database
 from ..utils.network import mac_to_vendor, normalize_mac, reverse_dns
+from .device_classifier import classify_device, UNKNOWN
 
 logger = logging.getLogger(__name__)
 
@@ -223,6 +224,11 @@ class DeviceTracker:
         is_gateway = (entry.ip == self.config.network.gateway_ip or
                       entry.mac.lower() == self.config.network.gateway_mac.lower())
 
+        # Passive fingerprint from vendor/hostname (advisory context only).
+        classification = classify_device(
+            vendor=vendor, hostname=hostname, mac=entry.mac, is_gateway=is_gateway
+        )
+
         return Device(
             ip=entry.ip,
             mac=entry.mac,
@@ -232,20 +238,26 @@ class DeviceTracker:
             vendor=vendor,
             is_trusted=is_trusted,
             is_gateway=is_gateway,
+            extra={
+                "device_type": classification.device_type,
+                "device_type_confidence": round(classification.confidence, 2),
+            },
         )
 
     def _new_device_alert(self, device: Device) -> Alert:
         vendor_str = f" [{device.vendor}]" if device.vendor else ""
         hostname_str = f" ({device.hostname})" if device.hostname else ""
+        device_type = device.extra.get("device_type", UNKNOWN)
+        type_str = f" — looks like a {device_type.replace('_', ' ')}" if device_type != UNKNOWN else ""
         return Alert(
             severity=Severity.LOW,
             category=AlertCategory.NEW_DEVICE,
             affected_host=device.ip,
             affected_mac=device.mac,
-            title=f"New device appeared: {device.ip}{hostname_str}{vendor_str}",
+            title=f"New device appeared: {device.ip}{hostname_str}{vendor_str}{type_str}",
             description=(
                 f"A device with IP {device.ip} and MAC {device.mac}{vendor_str} "
-                f"was seen for the first time{hostname_str}. "
+                f"was seen for the first time{hostname_str}{type_str}. "
                 "This may be a new authorized device or an unauthorized device joining the network."
             ),
             recommended_action=(

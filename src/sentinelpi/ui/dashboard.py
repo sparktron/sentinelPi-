@@ -290,6 +290,8 @@ def _device_to_dict(device) -> dict:
         "is_gateway": device.is_gateway,
         "alert_count": device.alert_count,
         "suspicion_score": round(device.suspicion_score, 2),
+        "device_type": device.extra.get("device_type", "unknown"),
+        "device_type_confidence": device.extra.get("device_type_confidence", 0.0),
     }
 
 
