@@ -28,7 +28,7 @@ from ..models import Alert, AlertStatus, Device, Severity, AlertCategory
 logger = logging.getLogger(__name__)
 
 # Current schema version — bump when adding migrations
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 
 # Thread-local storage for per-thread SQLite connections
 _thread_local = threading.local()
@@ -120,6 +120,8 @@ class Database:
             self._migrate_v2(conn)
         if current_version < 3:
             self._migrate_v3(conn)
+        if current_version < 4:
+            self._migrate_v4(conn)
 
         conn.execute("DELETE FROM schema_version")
         conn.execute("INSERT INTO schema_version VALUES (?)", (SCHEMA_VERSION,))
@@ -245,6 +247,20 @@ class Database:
             );
         """)
         logger.info("Database migration v3 applied.")
+
+    def _migrate_v4(self, conn: sqlite3.Connection) -> None:
+        """Per-host country baseline (for new-country detection)."""
+        conn.executescript("""
+            CREATE TABLE IF NOT EXISTS host_countries (
+                src_ip     TEXT NOT NULL,
+                country    TEXT NOT NULL,
+                first_seen TEXT NOT NULL,
+                PRIMARY KEY (src_ip, country)
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_host_countries_src ON host_countries(src_ip);
+        """)
+        logger.info("Database migration v4 applied.")
 
     # ------------------------------------------------------------------
     # Alert CRUD
@@ -506,6 +522,33 @@ class Database:
             (limit,),
         ).fetchall()
         return [dict(r) for r in rows]
+
+    # ------------------------------------------------------------------
+    # Per-host country baseline
+    # ------------------------------------------------------------------
+
+    def record_host_country(self, src_ip: str, country: str) -> bool:
+        """
+        Record that ``src_ip`` connected to ``country``.
+
+        Returns True if this is the first time we've seen this (host, country)
+        pair, False if already known. Atomic via INSERT OR IGNORE.
+        """
+        now = clock.now().isoformat()
+        with self._conn() as conn:
+            cur = conn.execute(
+                "INSERT OR IGNORE INTO host_countries (src_ip, country, first_seen) VALUES (?,?,?)",
+                (src_ip, country, now),
+            )
+            return cur.rowcount > 0
+
+    def get_host_countries(self, src_ip: str) -> set:
+        """Return the set of country codes ``src_ip`` has previously reached."""
+        conn = self._get_connection()
+        rows = conn.execute(
+            "SELECT country FROM host_countries WHERE src_ip=?", (src_ip,)
+        ).fetchall()
+        return {r["country"] for r in rows}
 
     # ------------------------------------------------------------------
     # DNS observations

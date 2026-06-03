@@ -118,3 +118,10 @@ def lookup_country(ip: str) -> str:
     if _instance is None:
         return ""
     return _instance.lookup_country(ip)
+
+
+def lookup_country_name(ip: str) -> str:
+    """Full country name via the module-level singleton, or '' if unavailable."""
+    if _instance is None:
+        return ""
+    return _instance.lookup_country_name(ip)

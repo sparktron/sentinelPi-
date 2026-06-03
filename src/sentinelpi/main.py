@@ -53,6 +53,7 @@ from .detectors.dns_detector import DNSDetector
 from .detectors.lateral_movement_detector import LateralMovementDetector
 from .detectors.auth_log_detector import AuthLogDetector
 from .detectors.doh_detector import DoHDetector
+from .detectors.geo_country_detector import GeoCountryDetector
 from .detectors.threat_intel_detector import ThreatIntelDetector
 from .intel.threat_feeds import ThreatIntelService
 from .capture.packet_capture import PacketCapture
@@ -188,6 +189,11 @@ class SentinelPi:
         if self.config.monitoring.doh_detection_enabled:
             self._doh_detector = DoHDetector(**detector_kwargs)
 
+        # New-country detector — only useful when GeoIP is available.
+        self._geo_country_detector: Optional[GeoCountryDetector] = None
+        if self.config.monitoring.geo_enabled:
+            self._geo_country_detector = GeoCountryDetector(**detector_kwargs)
+
         # Threat-intelligence service + detector (opt-in). The service loads any
         # cached feeds now; a background thread refreshes them (see _start_threat_intel).
         self._intel_service: Optional[ThreatIntelService] = None
@@ -286,6 +292,8 @@ class SentinelPi:
         ]
         if self._doh_detector is not None:
             event_detectors.append(self._doh_detector)
+        if self._geo_country_detector is not None:
+            event_detectors.append(self._geo_country_detector)
         if self._threat_intel_detector is not None:
             event_detectors.append(self._threat_intel_detector)
 
