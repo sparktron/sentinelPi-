@@ -54,10 +54,12 @@ from .detectors.lateral_movement_detector import LateralMovementDetector
 from .detectors.auth_log_detector import AuthLogDetector
 from .detectors.doh_detector import DoHDetector
 from .detectors.geo_country_detector import GeoCountryDetector
+from .detectors.asn_detector import ASNReputationDetector
 from .detectors.threat_intel_detector import ThreatIntelDetector
 from .intel.threat_feeds import ThreatIntelService
 from .capture.packet_capture import PacketCapture
 from .utils.geo import init_geo
+from .utils.asn import init_asn
 
 logger = logging.getLogger(__name__)
 
@@ -166,6 +168,8 @@ class SentinelPi:
         # Optional GeoIP
         if self.config.monitoring.geo_enabled:
             init_geo(self.config.monitoring.geo_db_path)
+        if self.config.monitoring.asn_reputation_enabled:
+            init_asn(self.config.monitoring.asn_db_path)
 
         # Register notifiers
         self._setup_notifiers()
@@ -193,6 +197,11 @@ class SentinelPi:
         self._geo_country_detector: Optional[GeoCountryDetector] = None
         if self.config.monitoring.geo_enabled:
             self._geo_country_detector = GeoCountryDetector(**detector_kwargs)
+
+        # ASN reputation detector — only useful when the ASN DB is available.
+        self._asn_detector: Optional[ASNReputationDetector] = None
+        if self.config.monitoring.asn_reputation_enabled:
+            self._asn_detector = ASNReputationDetector(**detector_kwargs)
 
         # Threat-intelligence service + detector (opt-in). The service loads any
         # cached feeds now; a background thread refreshes them (see _start_threat_intel).
@@ -294,6 +303,8 @@ class SentinelPi:
             event_detectors.append(self._doh_detector)
         if self._geo_country_detector is not None:
             event_detectors.append(self._geo_country_detector)
+        if self._asn_detector is not None:
+            event_detectors.append(self._asn_detector)
         if self._threat_intel_detector is not None:
             event_detectors.append(self._threat_intel_detector)
 

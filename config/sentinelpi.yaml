@@ -88,6 +88,14 @@ monitoring:
   geo_enabled: false
   geo_db_path: /var/lib/sentinelpi/GeoLite2-Country.mmdb
 
+  # ASN / hosting-provider reputation — requires GeoLite2-ASN.mmdb (same source).
+  # Flags connections to networks you list as suspicious (by ASN or operator-name
+  # keyword), commonly abused for malware/C2/anonymization.
+  asn_reputation_enabled: false
+  asn_db_path: /var/lib/sentinelpi/GeoLite2-ASN.mmdb
+  suspicious_asns: []            # e.g., [60068, 200000]
+  suspicious_asn_keywords: []    # case-insensitive org substrings, e.g., ["bulletproof"]
+
   # Packet capture via scapy (requires root or CAP_NET_RAW)
   # If disabled, proc polling is used (no root required, slightly less detail)
   packet_capture_enabled: true

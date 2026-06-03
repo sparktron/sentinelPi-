@@ -143,6 +143,14 @@ class MonitoringConfig:
     geo_enabled: bool = False
     geo_db_path: str = "/var/lib/sentinelpi/GeoLite2-Country.mmdb"
 
+    # IP→ASN reputation (offline GeoLite2-ASN database). Flags connections to
+    # hosting/anonymization providers commonly abused for malware/C2.
+    asn_reputation_enabled: bool = False
+    asn_db_path: str = "/var/lib/sentinelpi/GeoLite2-ASN.mmdb"
+    # Specific ASNs to always flag, and org-name substrings (case-insensitive).
+    suspicious_asns: List[int] = field(default_factory=list)
+    suspicious_asn_keywords: List[str] = field(default_factory=list)
+
     # Packet capture (requires root/CAP_NET_RAW)
     packet_capture_enabled: bool = True
 
