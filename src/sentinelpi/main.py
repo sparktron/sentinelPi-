@@ -52,6 +52,7 @@ from .detectors.connection_detector import ConnectionDetector
 from .detectors.dns_detector import DNSDetector
 from .detectors.lateral_movement_detector import LateralMovementDetector
 from .detectors.auth_log_detector import AuthLogDetector
+from .detectors.doh_detector import DoHDetector
 from .detectors.threat_intel_detector import ThreatIntelDetector
 from .intel.threat_feeds import ThreatIntelService
 from .capture.packet_capture import PacketCapture
@@ -182,6 +183,11 @@ class SentinelPi:
         self._lateral_detector = LateralMovementDetector(**detector_kwargs)
         self._auth_detector = AuthLogDetector(**detector_kwargs)
 
+        # Encrypted-DNS bypass detector (event-driven, no extra deps).
+        self._doh_detector: Optional[DoHDetector] = None
+        if self.config.monitoring.doh_detection_enabled:
+            self._doh_detector = DoHDetector(**detector_kwargs)
+
         # Threat-intelligence service + detector (opt-in). The service loads any
         # cached feeds now; a background thread refreshes them (see _start_threat_intel).
         self._intel_service: Optional[ThreatIntelService] = None
@@ -278,6 +284,8 @@ class SentinelPi:
             self._connection_detector,
             self._lateral_detector,
         ]
+        if self._doh_detector is not None:
+            event_detectors.append(self._doh_detector)
         if self._threat_intel_detector is not None:
             event_detectors.append(self._threat_intel_detector)
 
