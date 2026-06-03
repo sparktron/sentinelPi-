@@ -216,8 +216,8 @@ class DeviceTracker:
         # Attempt with a short timeout only for first-seen devices
         try:
             hostname = reverse_dns(entry.ip, timeout=0.5)
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("Reverse DNS failed for %s: %s", entry.ip, exc)
 
         is_trusted = (entry.ip in self._trusted_ips or entry.mac in self._trusted_macs)
         is_gateway = (entry.ip == self.config.network.gateway_ip or

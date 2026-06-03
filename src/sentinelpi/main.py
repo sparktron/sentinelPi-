@@ -102,6 +102,7 @@ def setup_logging(config: Config) -> None:
 
 def build_detector_thread(
     detector_instance,
+    alert_manager: "AlertManager",
     stop_event: threading.Event,
     poll_interval: int = 60,
     name: Optional[str] = None,
@@ -109,8 +110,8 @@ def build_detector_thread(
     """
     Wrap a detector's poll() method in a daemon thread.
 
-    The thread calls poll() every `poll_interval` seconds and passes
-    any returned alerts to the alert manager via a closure.
+    The thread calls poll() every `poll_interval` seconds and passes any
+    returned alerts to the explicitly-provided alert manager.
     """
     def _run():
         logger.info("%s thread started.", detector_instance.name)
@@ -118,11 +119,7 @@ def build_detector_thread(
             try:
                 alerts = detector_instance.poll()
                 if alerts:
-                    detector_instance.config  # access config for alert_manager ref
-                    # Alert manager reference is passed via _alert_manager attribute
-                    am = getattr(detector_instance, "_alert_manager", None)
-                    if am:
-                        am.process(alerts)
+                    alert_manager.process(alerts)
             except Exception as exc:
                 logger.error("%s poll error: %s", detector_instance.name, exc, exc_info=True)
             stop_event.wait(timeout=poll_interval)
@@ -148,6 +145,7 @@ class SentinelPi:
         logger.info("SentinelPi starting up...")
         logger.info("Config: %s", self.config._source_path or "built-in defaults")
         logger.info("=" * 60)
+        self._log_capabilities()
 
         self._stop_event = threading.Event()
         self._threads: List[threading.Thread] = []
@@ -182,19 +180,42 @@ class SentinelPi:
         self._lateral_detector = LateralMovementDetector(**detector_kwargs)
         self._auth_detector = AuthLogDetector(**detector_kwargs)
 
-        # Attach alert manager to each detector (needed in thread closures)
-        for det in [
-            self._arp_detector, self._beacon_detector, self._connection_detector,
-            self._dns_detector, self._lateral_detector, self._auth_detector,
-        ]:
-            det._alert_manager = self._alert_manager  # type: ignore[attr-defined]
-
         # Packet capture event queue and router
         self._capture_queue: queue.Queue = queue.Queue(maxsize=50_000)
         self._packet_capture: Optional[PacketCapture] = None
 
         # Dashboard
         self._dashboard_server = None
+
+    def _log_capabilities(self) -> None:
+        """
+        Log which optional features are active vs. degraded at startup.
+
+        Every optional dependency is imported behind an *_AVAILABLE flag and the
+        tool runs in a reduced mode without it. Surfacing this once makes "why
+        am I not seeing packet-level alerts?" answerable from the log.
+        """
+        from .capture.packet_capture import SCAPY_AVAILABLE
+        from .ui.dashboard import FLASK_AVAILABLE, WAITRESS_AVAILABLE
+        from .utils.geo import MAXMINDDB_AVAILABLE
+
+        features = [
+            ("Packet capture (scapy)", SCAPY_AVAILABLE,
+             "real-time ARP/DNS/connection events; proc polling only without it"),
+            ("Web dashboard (flask)", FLASK_AVAILABLE, "dashboard disabled without it"),
+            ("Production server (waitress)", WAITRESS_AVAILABLE,
+             "dashboard falls back to the dev server without it"),
+            ("GeoIP (maxminddb)", MAXMINDDB_AVAILABLE,
+             "country tagging disabled without it"),
+        ]
+        disabled = [(name, why) for name, ok, why in features if not ok]
+        for name, ok, _why in features:
+            logger.info("  feature %-32s %s", name, "enabled" if ok else "DISABLED")
+        if disabled:
+            logger.warning(
+                "Running in degraded mode — %d optional feature(s) disabled: %s",
+                len(disabled), "; ".join(f"{name} ({why})" for name, why in disabled),
+            )
 
     def _setup_notifiers(self) -> None:
         """Register enabled notifiers with the alert manager."""
@@ -288,7 +309,9 @@ class SentinelPi:
                     daemon=True,
                 )
             else:
-                t = build_detector_thread(det_or_tracker, self._stop_event, interval, name)
+                t = build_detector_thread(
+                    det_or_tracker, self._alert_manager, self._stop_event, interval, name
+                )
             self._threads.append(t)
             t.start()
             logger.debug("Started thread: %s", name)

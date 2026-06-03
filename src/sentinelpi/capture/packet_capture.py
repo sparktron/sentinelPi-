@@ -130,6 +130,32 @@ class PacketCapture:
             logger.warning("PacketCapture already running.")
             return True
 
+        if not self.interfaces:
+            logger.error("Packet capture not started: no network interfaces configured.")
+            return False
+
+        # Validate configured interfaces against what the host actually has.
+        # Prune unknown ones (clear warning) rather than IndexError-ing later;
+        # bail only if nothing valid remains. Validation failures degrade to
+        # "proceed as configured" so a missing psutil never blocks capture.
+        try:
+            import psutil
+            available = set(psutil.net_if_addrs().keys())
+            unknown = [i for i in self.interfaces if i not in available]
+            if unknown:
+                logger.warning(
+                    "Configured capture interface(s) not found: %s (available: %s)",
+                    ", ".join(unknown), ", ".join(sorted(available)),
+                )
+                self.interfaces = [i for i in self.interfaces if i in available]
+            if not self.interfaces:
+                logger.error(
+                    "Packet capture not started: none of the configured interfaces exist."
+                )
+                return False
+        except Exception as exc:
+            logger.debug("Could not validate interfaces (%s); proceeding as configured.", exc)
+
         self._running = True
         self._thread = threading.Thread(
             target=self._run,
@@ -146,8 +172,8 @@ class PacketCapture:
         if self._sniffer:
             try:
                 self._sniffer.stop()
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("Error stopping sniffer: %s", exc)
         if self._thread and self._thread.is_alive():
             self._thread.join(timeout=5.0)
         logger.info("Packet capture stopped. Dropped %d events (queue full).", self._dropped_count)
@@ -187,8 +213,8 @@ class PacketCapture:
                 if self._sniffer and self._sniffer.running:
                     try:
                         self._sniffer.stop()
-                    except Exception:
-                        pass
+                    except Exception as exc:
+                        logger.debug("Error stopping sniffer during cleanup: %s", exc)
 
     def _handle_packet(self, pkt: "scapy.packet.Packet") -> None:
         """
@@ -250,8 +276,8 @@ class PacketCapture:
             try:
                 if hasattr(dns.an, "rdata"):
                     response_ip = str(dns.an.rdata)
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("Could not parse DNS answer rdata: %s", exc)
 
         return CapturedDNS(
             timestamp=now,

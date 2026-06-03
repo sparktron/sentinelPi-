@@ -91,16 +91,16 @@ class GeoIPLookup:
             if record and "country" in record:
                 names = record["country"].get("names", {})
                 return names.get("en", "")
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("GeoIP name lookup failed for %s: %s", ip, exc)
         return ""
 
     def close(self) -> None:
         if self._reader:
             try:
                 self._reader.close()
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("Error closing GeoIP reader: %s", exc)
 
 
 # Module-level singleton — set up by main.py after config load

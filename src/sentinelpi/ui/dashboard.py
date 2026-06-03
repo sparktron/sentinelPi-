@@ -57,6 +57,22 @@ if TYPE_CHECKING:
     from ..alerts.manager import AlertManager
 
 
+def _bounded_int(raw: Optional[str], default: int, lo: int, hi: int) -> int:
+    """
+    Parse an int query param, clamped to [lo, hi].
+
+    Returns ``default`` when the param is absent/empty. Raises ValueError on a
+    non-numeric value so the caller can return a 400 instead of a 500.
+    """
+    if raw is None or raw == "":
+        return default
+    try:
+        value = int(raw)
+    except (TypeError, ValueError):
+        raise ValueError(f"expected an integer, got {raw!r}")
+    return max(lo, min(value, hi))
+
+
 def _is_loopback(host: str) -> bool:
     """True if host binds only to the loopback interface (no network exposure)."""
     if host in ("localhost", ""):
@@ -152,15 +168,27 @@ def create_app(
     @app.route("/api/alerts")
     @require_token
     def api_alerts():
-        limit = min(int(request.args.get("limit", 100)), 500)
-        hours = int(request.args.get("hours", 24))
+        try:
+            limit = _bounded_int(request.args.get("limit"), default=100, lo=1, hi=500)
+            hours = _bounded_int(request.args.get("hours"), default=24, lo=1, hi=24 * 90)
+        except ValueError as exc:
+            return jsonify({"error": f"Invalid query parameter: {exc}"}), 400
+
         severity = request.args.get("severity")
         status = request.args.get("status")
         host = request.args.get("host")
 
+        try:
+            sev_filter = Severity(severity) if severity else None
+            status_filter = AlertStatus(status) if status else None
+        except ValueError:
+            return jsonify({
+                "error": "Invalid 'severity' or 'status' value",
+                "valid_severity": [s.value for s in Severity],
+                "valid_status": [s.value for s in AlertStatus],
+            }), 400
+
         since = clock.now() - timedelta(hours=hours)
-        sev_filter = Severity(severity) if severity else None
-        status_filter = AlertStatus(status) if status else None
 
         alerts = db.get_recent_alerts(
             limit=limit,

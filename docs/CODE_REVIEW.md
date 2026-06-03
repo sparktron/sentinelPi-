@@ -32,7 +32,15 @@ _Updated 2026-06-02. Full suite green at 68 tests._
 | (bug) DB init crash | ✅ Fixed | `_conn()` guarded on `conn.in_transaction` — `executescript()` in migrations implicitly commits. Test: `test_db_migrations.py`. |
 | M1 — `datetime.utcnow()` naïve/deprecated; timezone-aware `clock` | ✅ Fixed | New `utils/clock.py` (aware UTC, injectable `FixedClock`). All `utcnow()` routed through `clock.now()`; dropped `isoformat() + "Z"` double-labeling. Quiet-hours intentionally stays local wall-clock. Test: `test_clock.py`. |
 | H3 — Flask dev server / no clean shutdown | ✅ Fixed | `DashboardServer` prefers waitress (graceful `stop()` via `server.close()` + thread join); falls back to the dev server with a warning when waitress is absent. Test: `test_dashboard_server.py`. |
-| M2–M6, L1–L6 | ⬜ Open | Hardening/polish; see below. |
+| M3 — dead no-op + fragile `_alert_manager` attr | ✅ Fixed | `build_detector_thread` takes `alert_manager` explicitly; removed the `detector.config` no-op and the dynamically-attached attribute. Test: `test_polish_fixes.py`. |
+| M4 — `mark_device_suspicious` locking | ✅ Verified | Already guarded by the `DeviceTracker` `RLock`; no change needed. |
+| M5 — `except Exception: pass` hides failures | ✅ Fixed | All 8 silent blocks now log at debug (incl. the reverse-DNS swallow in `_create_device`); notifier workers distinguish `queue.Empty` from real send failures (logged at warning). |
+| M6 — capture interface edge cases | ✅ Fixed | `PacketCapture.start()` fails clearly on empty interfaces, prunes unknown ones, bails if none remain. Test: `test_polish_fixes.py`. |
+| L1/L2 — dashboard param 500s | ✅ Fixed | `/api/alerts` validates int (`_bounded_int`, clamped) and enum params, returning 400 with guidance. Test: `test_polish_fixes.py`. |
+| L4 — degraded-mode startup banner | ✅ Fixed | `SentinelPi._log_capabilities()` logs each optional feature's status and a degraded-mode warning. Test: `test_polish_fixes.py`. |
+| M2 — dedup keyed on `alert.timestamp` vs ingest time | ⬜ Open (decision) | Needs a product call on event-time vs ingest-time suppression; not a clear bug today. |
+| L3 — dedup cache not warmed at startup | ⬜ Open (low) | The DB slow-path in `_is_duplicate` already covers cross-restart dedup; warming is an optimization. |
+| L6 — structured (JSON) logs | ⬜ Open (enhancement) | |
 
 ---
 
