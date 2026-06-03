@@ -19,6 +19,7 @@ import sqlite3
 import threading
 from contextlib import contextmanager
 from datetime import datetime, timedelta
+from ..utils import clock
 from pathlib import Path
 from typing import List, Optional, Dict, Any, Generator
 
@@ -80,9 +81,15 @@ class Database:
         conn.execute("BEGIN")
         try:
             yield conn
-            conn.execute("COMMIT")
+            # Some statements (notably executescript() used by the schema
+            # migrations) implicitly COMMIT the open transaction. Guard on
+            # in_transaction so we don't COMMIT/ROLLBACK an already-closed one
+            # ("cannot commit - no transaction is active").
+            if conn.in_transaction:
+                conn.execute("COMMIT")
         except Exception:
-            conn.execute("ROLLBACK")
+            if conn.in_transaction:
+                conn.execute("ROLLBACK")
             raise
 
     def close(self) -> None:
@@ -404,37 +411,42 @@ class Database:
         ip: str,
         hour_of_day: int,
         day_of_week: int,
-        new_conn_count: float,
+        avg_conn: float,
+        stddev_conn: float,
+        sample_count: int,
     ) -> None:
-        """Incrementally update rolling average and stddev for hourly connection counts."""
-        conn = self._get_connection()
-        row = conn.execute(
-            "SELECT avg_conn, stddev_conn, sample_count FROM baseline_hourly WHERE ip=? AND hour_of_day=? AND day_of_week=?",
-            (ip, hour_of_day, day_of_week),
-        ).fetchone()
+        """
+        Persist a snapshot of the hourly connection-count statistics.
 
-        if row is None:
-            with self._conn() as c:
-                c.execute(
-                    "INSERT INTO baseline_hourly VALUES (?,?,?,?,?,?,?)",
-                    (ip, hour_of_day, day_of_week, new_conn_count, 0.0, 1, datetime.utcnow().isoformat()),
-                )
-        else:
-            # Welford online algorithm for running mean and variance
-            n = row["sample_count"] + 1
-            old_avg = row["avg_conn"]
-            new_avg = old_avg + (new_conn_count - old_avg) / n
-            # Variance update (simplified; store as approximate stddev)
-            old_var = row["stddev_conn"] ** 2
-            new_var = old_var + ((new_conn_count - old_avg) * (new_conn_count - new_avg) - old_var) / n
-            new_stddev = max(0.0, new_var) ** 0.5
-            with self._conn() as c:
-                c.execute(
-                    """UPDATE baseline_hourly
-                       SET avg_conn=?, stddev_conn=?, sample_count=?, updated_at=?
-                       WHERE ip=? AND hour_of_day=? AND day_of_week=?""",
-                    (new_avg, new_stddev, n, datetime.utcnow().isoformat(), ip, hour_of_day, day_of_week),
-                )
+        This is a pure, atomic upsert of values the caller has already computed
+        correctly (BaselineEngine.RunningStats uses Welford's algorithm). We
+        deliberately do NOT re-derive the running variance in SQL:
+
+        - The previous version used `old_var + ((x-old_avg)*(x-new_avg) - old_var)/n`,
+          which is an EWMA-style decay, not the running sample variance — it
+          biased the stddev and mis-scaled the z-scores used for spike detection.
+        - It also did a SELECT on the autocommit connection and the write in a
+          separate transaction (a non-atomic read-modify-write that loses
+          concurrent updates).
+
+        Snapshotting the in-memory stats keeps a single source of truth and makes
+        the write a single atomic statement.
+        """
+        now = clock.now().isoformat()
+        with self._conn() as conn:
+            conn.execute(
+                """
+                INSERT INTO baseline_hourly
+                    (ip, hour_of_day, day_of_week, avg_conn, stddev_conn, sample_count, updated_at)
+                VALUES (?,?,?,?,?,?,?)
+                ON CONFLICT(ip, hour_of_day, day_of_week) DO UPDATE SET
+                    avg_conn = excluded.avg_conn,
+                    stddev_conn = excluded.stddev_conn,
+                    sample_count = excluded.sample_count,
+                    updated_at = excluded.updated_at
+                """,
+                (ip, hour_of_day, day_of_week, avg_conn, stddev_conn, sample_count, now),
+            )
 
     def get_hourly_baseline(self, ip: str, hour_of_day: int, day_of_week: int) -> Optional[Dict]:
         conn = self._get_connection()
@@ -446,7 +458,7 @@ class Database:
 
     def record_destination(self, src_ip: str, dst_ip: str, dst_port: int, protocol: str) -> None:
         """Record or increment a known (src→dst:port) destination."""
-        now = datetime.utcnow().isoformat()
+        now = clock.now().isoformat()
         with self._conn() as conn:
             conn.execute(
                 """
@@ -469,7 +481,7 @@ class Database:
 
     def record_dns_domain(self, domain: str) -> None:
         """Record a DNS domain as observed."""
-        now = datetime.utcnow().isoformat()
+        now = clock.now().isoformat()
         with self._conn() as conn:
             conn.execute(
                 """
@@ -534,7 +546,7 @@ class Database:
         with self._conn() as conn:
             conn.execute(
                 "INSERT OR REPLACE INTO file_hashes (path, sha256, recorded_at) VALUES (?,?,?)",
-                (path, sha256, datetime.utcnow().isoformat()),
+                (path, sha256, clock.now().isoformat()),
             )
 
     # ------------------------------------------------------------------
@@ -543,7 +555,7 @@ class Database:
 
     def purge_old_records(self) -> None:
         """Delete records older than retention_days. Called periodically."""
-        cutoff = (datetime.utcnow() - timedelta(days=self.retention_days)).isoformat()
+        cutoff = (clock.now() - timedelta(days=self.retention_days)).isoformat()
         with self._conn() as conn:
             r1 = conn.execute("DELETE FROM alerts WHERE timestamp < ?", (cutoff,))
             r2 = conn.execute("DELETE FROM dns_observations WHERE timestamp < ?", (cutoff,))

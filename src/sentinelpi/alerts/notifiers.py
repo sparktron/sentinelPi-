@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import json
 import logging
+import queue
 import smtplib
 import socket
 import threading
@@ -54,7 +55,7 @@ class BaseNotifier(ABC):
         """Convert an Alert to a JSON-serializable dict."""
         return {
             "alert_id": alert.alert_id,
-            "timestamp": alert.timestamp.isoformat() + "Z",
+            "timestamp": alert.timestamp.isoformat(),
             "severity": alert.severity.value,
             "category": alert.category.value,
             "affected_host": alert.affected_host,
@@ -170,9 +171,12 @@ class EmailNotifier(BaseNotifier):
         while True:
             try:
                 alert = self._queue.get(timeout=5.0)
+            except queue.Empty:
+                continue
+            try:
                 self._send_email(alert)
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.warning("Email notification failed: %s", exc)
 
     def _send_email(self, alert: Alert) -> None:
         """Send a single alert email."""
@@ -253,9 +257,12 @@ class WebhookNotifier(BaseNotifier):
         while True:
             try:
                 alert = self._queue.get(timeout=5.0)
+            except queue.Empty:
+                continue
+            try:
                 self._post_webhook(alert)
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.warning("Webhook notification failed: %s", exc)
 
     def _post_webhook(self, alert: Alert) -> None:
         try:

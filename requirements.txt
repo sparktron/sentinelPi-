@@ -13,8 +13,11 @@ scapy>=2.5.0,<3.0
 psutil>=5.9.0,<6.0
 
 # Lightweight web dashboard framework
-# Minimal footprint; ships with a dev server adequate for localhost use.
 flask>=3.0.0,<4.0
+
+# Production-grade pure-Python WSGI server for the dashboard (graceful shutdown).
+# If absent, the dashboard falls back to Flask's dev server (localhost-dev only).
+waitress>=3.0.0,<4.0
 
 # Configuration file parsing
 pyyaml>=6.0,<7.0

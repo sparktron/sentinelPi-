@@ -16,6 +16,7 @@ from __future__ import annotations
 import logging
 from collections import defaultdict, deque
 from datetime import datetime, timedelta
+from ..utils import clock
 from typing import Dict, List, Optional, Set, Tuple
 
 from .base import BaseDetector
@@ -44,7 +45,7 @@ class PortScanDetector(BaseDetector):
         # Suppression: (src_ip, dst_ip) → last alert time
         self._last_alert: Dict[str, datetime] = {}
 
-    def process_event(self, event: object) -> List[Alert]:
+    def _process_event(self, event: object) -> List[Alert]:
         """Process CapturedConnection events (TCP SYNs)."""
         if not isinstance(event, CapturedConnection):
             return []
@@ -55,7 +56,7 @@ class PortScanDetector(BaseDetector):
             return []
         return self._record_connection(event.src_ip, event.dst_ip, event.dst_port, event.timestamp)
 
-    def poll(self) -> List[Alert]:
+    def _poll(self) -> List[Alert]:
         """
         Poll /proc/net/tcp for SYN_SENT connections.
 
@@ -64,7 +65,14 @@ class PortScanDetector(BaseDetector):
         from ..capture.proc_reader import read_tcp_connections
         alerts: List[Alert] = []
         connections = read_tcp_connections(include_listen=False)
-        now = datetime.utcnow()
+        now = clock.now()
+
+        # Bound memory: drop idle flow keys (older than the detection window) and
+        # expired suppression entries. The deques are maxlen-bounded already; this
+        # caps the number of keys, which would otherwise grow per scanned host.
+        self._evict_idle_deques(self._scan_ports, self.WINDOW_SECONDS)
+        self._evict_idle_deques(self._sweep_targets, self.WINDOW_SECONDS)
+        self._evict_expired_times(self._last_alert, 300)
 
         # Count SYN_SENT connections per (src, dst) pair
         syn_counts: Dict[Tuple[str, str], Set[int]] = defaultdict(set)

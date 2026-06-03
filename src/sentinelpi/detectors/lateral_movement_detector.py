@@ -16,6 +16,7 @@ from __future__ import annotations
 import logging
 from collections import defaultdict, deque
 from datetime import datetime, timedelta
+from ..utils import clock
 from typing import Dict, List, Optional, Set, Tuple
 
 from .base import BaseDetector
@@ -57,7 +58,7 @@ class LateralMovementDetector(BaseDetector):
         self._admin_pairs_initialized = False
         self._last_alert: Dict[str, datetime] = {}
 
-    def process_event(self, event: object) -> List[Alert]:
+    def _process_event(self, event: object) -> List[Alert]:
         """Process internal-to-internal connection events."""
         if not isinstance(event, CapturedConnection):
             return []
@@ -67,11 +68,16 @@ class LateralMovementDetector(BaseDetector):
             event.src_ip, event.dst_ip, event.dst_port, event.timestamp
         )
 
-    def poll(self) -> List[Alert]:
+    def _poll(self) -> List[Alert]:
         """Poll /proc/net/tcp for internal connections."""
         alerts: List[Alert] = []
         connections = read_tcp_connections(include_listen=False)
-        now = datetime.utcnow()
+        now = clock.now()
+
+        # Bound memory: drop idle source flows (older than the 60s detection
+        # window) and expired suppression keys (some carry a 24h cooldown).
+        self._evict_idle_deques(self._internal_conns, 60)
+        self._evict_expired_times(self._last_alert, 86400)
 
         for conn in connections:
             if conn.state not in ("ESTABLISHED", "SYN_SENT"):

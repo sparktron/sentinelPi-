@@ -19,6 +19,7 @@ from __future__ import annotations
 import math
 import random
 from datetime import datetime, timedelta
+from sentinelpi.utils import clock
 from typing import List
 
 from sentinelpi.models import Alert, AlertCategory, Device, Severity
@@ -33,7 +34,7 @@ def make_device(
     is_trusted: bool = False,
     is_gateway: bool = False,
 ) -> Device:
-    now = datetime.utcnow()
+    now = clock.now()
     return Device(
         ip=ip,
         mac=mac,
@@ -84,7 +85,7 @@ def make_port_scan_events(
     Generates port_count SYN packets within a 30-second window.
     """
     if start_time is None:
-        start_time = datetime.utcnow()
+        start_time = clock.now()
 
     events = []
     for i in range(port_count):
@@ -120,7 +121,7 @@ def make_beacon_events(
     Small jitter (5%) makes it realistic but still very regular.
     """
     if start_time is None:
-        start_time = datetime.utcnow()
+        start_time = clock.now()
 
     events = []
     current_time = start_time
@@ -153,7 +154,7 @@ def make_irregular_events(
     High coefficient of variation — user-driven browsing patterns.
     """
     if start_time is None:
-        start_time = datetime.utcnow()
+        start_time = clock.now()
 
     events = []
     current_time = start_time
@@ -191,7 +192,7 @@ def make_arp_spoof_events(
     to be the gateway with a different MAC address.
     """
     if start_time is None:
-        start_time = datetime.utcnow()
+        start_time = clock.now()
 
     events = []
     for i in range(count):
@@ -214,7 +215,7 @@ def make_normal_arp_events(
 ) -> List[CapturedARP]:
     """Normal ARP traffic — requests and replies from known device."""
     if start_time is None:
-        start_time = datetime.utcnow()
+        start_time = clock.now()
 
     events = []
     for i in range(count):
@@ -241,7 +242,7 @@ def make_ssh_brute_force_log(
 ) -> List[str]:
     """Generate realistic auth log lines for an SSH brute force attack."""
     if start_time is None:
-        start_time = datetime.utcnow()
+        start_time = clock.now()
 
     lines = []
     users = [target_user, "root", "ubuntu", "pi", "admin", "user", "test"]
@@ -262,7 +263,7 @@ def make_ssh_success_log(
 ) -> List[str]:
     """Generate auth log line for a successful SSH login."""
     if start_time is None:
-        start_time = datetime.utcnow()
+        start_time = clock.now()
     ts = start_time.strftime("%b %d %H:%M:%S")
     return [
         f"{ts} sentinelpi sshd[1234]: Accepted publickey for {user} "
@@ -281,7 +282,7 @@ def make_dga_dns_events(
 ) -> List[CapturedDNS]:
     """Simulate DGA domain generation — high entropy, NXDOMAIN responses."""
     if start_time is None:
-        start_time = datetime.utcnow()
+        start_time = clock.now()
 
     import string
     import hashlib
@@ -311,7 +312,7 @@ def make_dns_tunnel_event(
 ) -> CapturedDNS:
     """Simulate a DNS tunneling query with a very long subdomain label."""
     if timestamp is None:
-        timestamp = datetime.utcnow()
+        timestamp = clock.now()
 
     # Long base32-encoded subdomain (iodine-style)
     long_subdomain = "JBSWY3DPEBLW64TMMQQQ4YTSMN2XAZLOOQ5C2YLNF3HSVKMMFZCA3DPNRUW4ZZPNUQHK3TPOQQGK3TF"
@@ -334,7 +335,7 @@ def make_rogue_device_arp(
 ) -> CapturedARP:
     """Simulate an unknown device appearing on the network."""
     if timestamp is None:
-        timestamp = datetime.utcnow()
+        timestamp = clock.now()
     return CapturedARP(
         timestamp=timestamp,
         op=1,                              # ARP request

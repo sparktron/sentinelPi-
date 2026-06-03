@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import pytest
 from datetime import datetime, timedelta
+from sentinelpi.utils import clock
 
 from sentinelpi.detectors.dns_detector import DNSDetector
 from sentinelpi.models import AlertCategory, Severity
@@ -44,7 +45,7 @@ class TestDNSDetector:
         """Well-known low-entropy domains should not trigger alerts."""
         from sentinelpi.capture.packet_capture import CapturedDNS
         normal = CapturedDNS(
-            timestamp=datetime.utcnow(),
+            timestamp=clock.now(),
             src_ip="192.168.1.100",
             dst_ip="8.8.8.8",
             query_name="google.com",
@@ -89,7 +90,7 @@ class TestDNSDetector:
 
         # High-entropy but whitelisted CDN subdomain
         event = CapturedDNS(
-            timestamp=datetime.utcnow(),
+            timestamp=clock.now(),
             src_ip="192.168.1.100",
             dst_ip="8.8.8.8",
             query_name="d3abc123xyz.cloudfront.net",

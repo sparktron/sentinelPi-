@@ -27,6 +27,7 @@ import logging
 import threading
 from collections import defaultdict, deque
 from datetime import datetime, timedelta
+from ..utils import clock
 from typing import Dict, List, Optional, Set, Tuple
 
 from ..config.manager import Config
@@ -116,7 +117,7 @@ class BaselineEngine:
         self._known_destinations: Set[Tuple[str, str, int, str]] = set()
 
         # Service start time — used to determine if we're still in learning phase
-        self._start_time: datetime = datetime.utcnow()
+        self._start_time: datetime = clock.now()
 
         # Load from database on startup
         self._load_from_db()
@@ -138,7 +139,7 @@ class BaselineEngine:
     @property
     def is_learning(self) -> bool:
         """True if we're still in the initial learning phase."""
-        elapsed_hours = (datetime.utcnow() - self._start_time).total_seconds() / 3600
+        elapsed_hours = (clock.now() - self._start_time).total_seconds() / 3600
         return elapsed_hours < self.config.monitoring.baseline_learning_hours
 
     # ------------------------------------------------------------------
@@ -151,7 +152,7 @@ class BaselineEngine:
 
         Call this once per polling interval (e.g., every minute) per source IP.
         """
-        now = datetime.utcnow()
+        now = clock.now()
         hour = now.hour
         dow = now.weekday()
         key = (ip, hour, dow)
@@ -161,10 +162,12 @@ class BaselineEngine:
                 self._conn_stats[key] = RunningStats()
             self._conn_stats[key].update(float(count))
 
-        # Persist to database periodically (every 10 updates)
+        # Persist a snapshot of the authoritative in-memory stats periodically
+        # (every 10 updates). The DB row mirrors RunningStats — it is not a
+        # second, independently-derived estimate.
         stats = self._conn_stats.get(key)
         if stats and stats.n % 10 == 0:
-            self.db.update_hourly_baseline(ip, hour, dow, float(count))
+            self.db.update_hourly_baseline(ip, hour, dow, stats.mean, stats.stddev, stats.n)
 
     def check_connection_spike(self, ip: str, current_count: int) -> Tuple[bool, float]:
         """
@@ -175,7 +178,7 @@ class BaselineEngine:
         if self.is_learning:
             return False, 0.0
 
-        now = datetime.utcnow()
+        now = clock.now()
         key = (ip, now.hour, now.weekday())
 
         with self._lock:
@@ -310,7 +313,7 @@ class BaselineEngine:
                 "learning_hours_remaining": max(
                     0,
                     self.config.monitoring.baseline_learning_hours
-                    - (datetime.utcnow() - self._start_time).total_seconds() / 3600
+                    - (clock.now() - self._start_time).total_seconds() / 3600
                 ),
                 "known_domains": len(self._known_domains),
                 "known_destinations": len(self._known_destinations),

@@ -52,7 +52,7 @@ class DNSDetector(BaseDetector):
         # Alert cooldowns
         self._last_alert: Dict[str, datetime] = {}
 
-    def process_event(self, event: object) -> List[Alert]:
+    def _process_event(self, event: object) -> List[Alert]:
         """Process a CapturedDNS event."""
         if not isinstance(event, CapturedDNS):
             return []

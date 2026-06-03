@@ -28,6 +28,7 @@ import logging
 import math
 from collections import defaultdict, deque
 from datetime import datetime, timedelta
+from ..utils import clock
 from typing import Dict, List, Optional, Tuple
 
 from .base import BaseDetector
@@ -68,9 +69,9 @@ class BeaconDetector(BaseDetector):
         # Track last alert time per flow to avoid alert storms
         self._last_alert: Dict[Tuple[str, str, int], datetime] = {}
         # Last time we ran cleanup
-        self._last_cleanup: datetime = datetime.utcnow()
+        self._last_cleanup: datetime = clock.now()
 
-    def process_event(self, event: object) -> List[Alert]:
+    def _process_event(self, event: object) -> List[Alert]:
         """Process outbound connection events."""
         if not isinstance(event, CapturedConnection):
             return []
@@ -92,7 +93,7 @@ class BeaconDetector(BaseDetector):
 
         return self._analyze_flow(key, timestamps)
 
-    def poll(self) -> List[Alert]:
+    def _poll(self) -> List[Alert]:
         """
         Periodically check connection data from /proc/net for beacon patterns.
 
@@ -100,7 +101,7 @@ class BeaconDetector(BaseDetector):
         """
         from ..capture.proc_reader import read_tcp_connections
         alerts: List[Alert] = []
-        now = datetime.utcnow()
+        now = clock.now()
 
         connections = read_tcp_connections(include_listen=False)
         for conn in connections:
@@ -168,7 +169,7 @@ class BeaconDetector(BaseDetector):
             return []
 
         # Cooldown: don't re-alert for the same flow within 30 minutes
-        now = datetime.utcnow()
+        now = clock.now()
         last = self._last_alert.get(key)
         if last and (now - last).total_seconds() < 1800:
             return []

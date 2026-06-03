@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import pytest
 from datetime import datetime
+from sentinelpi.utils import clock
 
 from sentinelpi.detectors.port_scan_detector import PortScanDetector
 from sentinelpi.models import AlertCategory, Severity
@@ -76,7 +77,7 @@ class TestPortScanDetector:
     def test_non_syn_packets_ignored(self, scan_detector):
         """Non-SYN TCP packets should not count toward scan detection."""
         from sentinelpi.capture.packet_capture import CapturedConnection
-        now = datetime.utcnow()
+        now = clock.now()
 
         # ACK packets — not connection initiations
         alerts = []
@@ -98,7 +99,7 @@ class TestPortScanDetector:
     def test_udp_events_ignored(self, scan_detector):
         """UDP events should be ignored by TCP port scan detector."""
         from sentinelpi.capture.packet_capture import CapturedConnection
-        now = datetime.utcnow()
+        now = clock.now()
 
         alerts = []
         for port in range(1, 50):

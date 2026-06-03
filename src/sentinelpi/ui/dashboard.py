@@ -11,17 +11,23 @@ Features:
 
 Security:
 - Binds to 127.0.0.1 by default (never exposed to network unless configured)
-- Optional access token in Authorization header or query param
+- Access token required on every route, supplied via the Authorization header
+  only (never the query string); auto-generated and logged once if unset
+- Refuses to bind to a non-loopback host with no token (fail closed)
 - No user input is ever evaluated as code
 - All dynamic data is JSON-serialized (no raw template injection)
 """
 
 from __future__ import annotations
 
+import hmac
+import ipaddress
 import json
 import logging
+import secrets
 import threading
 from datetime import datetime, timedelta
+from ..utils import clock
 from functools import wraps
 from typing import TYPE_CHECKING, Optional
 
@@ -36,12 +42,46 @@ except ImportError:
     FLASK_AVAILABLE = False
     logger.warning("Flask not available — web dashboard disabled.")
 
+try:
+    # Production-grade, pure-Python WSGI server with a real shutdown API.
+    from waitress import create_server as _create_waitress_server
+    WAITRESS_AVAILABLE = True
+except ImportError:
+    WAITRESS_AVAILABLE = False
+
 if TYPE_CHECKING:
     from ..config.manager import Config
     from ..storage.database import Database
     from ..inventory.device_tracker import DeviceTracker
     from ..baseline.engine import BaselineEngine
     from ..alerts.manager import AlertManager
+
+
+def _bounded_int(raw: Optional[str], default: int, lo: int, hi: int) -> int:
+    """
+    Parse an int query param, clamped to [lo, hi].
+
+    Returns ``default`` when the param is absent/empty. Raises ValueError on a
+    non-numeric value so the caller can return a 400 instead of a 500.
+    """
+    if raw is None or raw == "":
+        return default
+    try:
+        value = int(raw)
+    except (TypeError, ValueError):
+        raise ValueError(f"expected an integer, got {raw!r}")
+    return max(lo, min(value, hi))
+
+
+def _is_loopback(host: str) -> bool:
+    """True if host binds only to the loopback interface (no network exposure)."""
+    if host in ("localhost", ""):
+        return True
+    try:
+        return ipaddress.ip_address(host).is_loopback
+    except ValueError:
+        # Unknown hostname — treat as non-loopback (fail safe / err on exposed).
+        return False
 
 
 def create_app(
@@ -60,10 +100,24 @@ def create_app(
         return None
 
     app = Flask(__name__, template_folder="templates")
-    app.config["SECRET_KEY"] = "sentinelpi-dashboard-key"
+    # Random per-process secret — never a hardcoded value (signs Flask sessions/flashes).
+    app.config["SECRET_KEY"] = secrets.token_hex(32)
+
+    # Secure by default: if no token was configured, generate one and log it
+    # once. This means the dashboard — which exposes the full network picture
+    # and trust/ack/mute mutation endpoints — is never unauthenticated.
+    if not config.dashboard.access_token:
+        config.dashboard.access_token = secrets.token_urlsafe(32)
+        logger.warning(
+            "No dashboard access_token configured — generated a random one for this run:\n"
+            "    %s\n"
+            "Pass it as 'Authorization: Bearer <token>'. Set dashboard.access_token in config "
+            "to make it stable across restarts.",
+            config.dashboard.access_token,
+        )
 
     # ------------------------------------------------------------------
-    # Authentication middleware (optional token)
+    # Authentication middleware (token required, header only)
     # ------------------------------------------------------------------
 
     def require_token(f):
@@ -71,13 +125,15 @@ def create_app(
         def decorated(*args, **kwargs):
             token = config.dashboard.access_token
             if not token:
-                return f(*args, **kwargs)
-            # Accept token via Authorization header or ?token= query param
-            provided = (
-                request.headers.get("Authorization", "").replace("Bearer ", "")
-                or request.args.get("token", "")
-            )
-            if provided != token:
+                # Fail closed: an empty token should be impossible (auto-generated
+                # above), but if it ever happens, deny rather than expose.
+                abort(401)
+            # Header only — never accept the token via query string, which lands
+            # in access logs, browser history, and Referer headers.
+            auth = request.headers.get("Authorization", "")
+            provided = auth[7:] if auth.startswith("Bearer ") else ""
+            # Constant-time compare to avoid leaking the token via timing.
+            if not provided or not hmac.compare_digest(provided, token):
                 abort(401)
             return f(*args, **kwargs)
         return decorated
@@ -94,7 +150,7 @@ def create_app(
     @app.route("/api/status")
     @require_token
     def api_status():
-        now = datetime.utcnow()
+        now = clock.now()
         last_24h = now - timedelta(hours=24)
         counts = db.get_alert_counts_by_severity(last_24h)
         baseline_summary = baseline.get_summary()
@@ -102,7 +158,7 @@ def create_app(
 
         return jsonify({
             "status": "running",
-            "timestamp": now.isoformat() + "Z",
+            "timestamp": now.isoformat(),
             "alert_counts_24h": counts,
             "device_count": device_tracker.get_device_count(),
             "baseline": baseline_summary,
@@ -112,15 +168,27 @@ def create_app(
     @app.route("/api/alerts")
     @require_token
     def api_alerts():
-        limit = min(int(request.args.get("limit", 100)), 500)
-        hours = int(request.args.get("hours", 24))
+        try:
+            limit = _bounded_int(request.args.get("limit"), default=100, lo=1, hi=500)
+            hours = _bounded_int(request.args.get("hours"), default=24, lo=1, hi=24 * 90)
+        except ValueError as exc:
+            return jsonify({"error": f"Invalid query parameter: {exc}"}), 400
+
         severity = request.args.get("severity")
         status = request.args.get("status")
         host = request.args.get("host")
 
-        since = datetime.utcnow() - timedelta(hours=hours)
-        sev_filter = Severity(severity) if severity else None
-        status_filter = AlertStatus(status) if status else None
+        try:
+            sev_filter = Severity(severity) if severity else None
+            status_filter = AlertStatus(status) if status else None
+        except ValueError:
+            return jsonify({
+                "error": "Invalid 'severity' or 'status' value",
+                "valid_severity": [s.value for s in Severity],
+                "valid_status": [s.value for s in AlertStatus],
+            }), 400
+
+        since = clock.now() - timedelta(hours=hours)
 
         alerts = db.get_recent_alerts(
             limit=limit,
@@ -196,7 +264,7 @@ def create_app(
 def _alert_to_dict(alert) -> dict:
     return {
         "alert_id": alert.alert_id,
-        "timestamp": alert.timestamp.isoformat() + "Z",
+        "timestamp": alert.timestamp.isoformat(),
         "severity": alert.severity.value,
         "category": alert.category.value,
         "affected_host": alert.affected_host,
@@ -216,8 +284,8 @@ def _device_to_dict(device) -> dict:
         "mac": device.mac,
         "hostname": device.hostname,
         "vendor": device.vendor,
-        "first_seen": device.first_seen.isoformat() + "Z",
-        "last_seen": device.last_seen.isoformat() + "Z",
+        "first_seen": device.first_seen.isoformat(),
+        "last_seen": device.last_seen.isoformat(),
         "is_trusted": device.is_trusted,
         "is_gateway": device.is_gateway,
         "alert_count": device.alert_count,
@@ -227,7 +295,7 @@ def _device_to_dict(device) -> dict:
 
 def _generate_daily_report(db, device_tracker, baseline) -> dict:
     """Generate a daily summary report."""
-    now = datetime.utcnow()
+    now = clock.now()
     since = now - timedelta(hours=24)
 
     alerts = db.get_recent_alerts(limit=1000, since=since)
@@ -255,7 +323,7 @@ def _generate_daily_report(db, device_tracker, baseline) -> dict:
 
     return {
         "period": "last_24h",
-        "generated_at": now.isoformat() + "Z",
+        "generated_at": now.isoformat(),
         "total_alerts": len(alerts),
         "alerts_by_severity": by_severity,
         "alerts_by_category": by_category,
@@ -268,13 +336,20 @@ def _generate_daily_report(db, device_tracker, baseline) -> dict:
 
 class DashboardServer:
     """
-    Wrapper that runs the Flask dashboard in a dedicated daemon thread.
+    Runs the dashboard WSGI app in a dedicated daemon thread.
+
+    Prefers waitress (production-grade, pure-Python) so we get a real, graceful
+    shutdown via stop(). If waitress is not installed we fall back to Flask's
+    Werkzeug dev server with a loud warning — that path has no clean shutdown
+    and is only appropriate for local development.
     """
 
     def __init__(self, app: "Flask", config: "Config") -> None:
         self._app = app
         self._config = config
         self._thread: Optional[threading.Thread] = None
+        # waitress server handle, set only on the waitress path; gives us .close().
+        self._server = None
 
     def start(self) -> None:
         if not FLASK_AVAILABLE or self._app is None:
@@ -284,8 +359,42 @@ class DashboardServer:
         host = self._config.dashboard.host
         port = self._config.dashboard.port
 
+        # Fail closed: refuse to expose the dashboard on a non-loopback address
+        # without authentication. create_app() auto-generates a token, so this
+        # should never trip in normal use — it guards against a misconfigured
+        # config object reaching the server with auth disabled.
+        if not self._config.dashboard.access_token and not _is_loopback(host):
+            logger.error(
+                "Refusing to bind dashboard to non-loopback host %s with no access_token "
+                "(would expose an unauthenticated control panel). Set dashboard.access_token "
+                "or bind to 127.0.0.1.",
+                host,
+            )
+            return
+
+        if WAITRESS_AVAILABLE:
+            self._start_waitress(host, port)
+        else:
+            logger.warning(
+                "waitress not installed — falling back to the Flask/Werkzeug dev server. "
+                "This has no graceful shutdown and is not hardened; install waitress for "
+                "production use (pip install waitress)."
+            )
+            self._start_dev_server(host, port)
+
+        logger.info("Dashboard started at http://%s:%d/", host, port)
+
+    def _start_waitress(self, host: str, port: int) -> None:
+        # create_server binds the socket synchronously, so a bad bind raises here
+        # (on the caller's thread) rather than dying silently in the worker.
+        self._server = _create_waitress_server(self._app, host=host, port=port)
+        self._thread = threading.Thread(
+            target=self._server.run, daemon=True, name="DashboardServer"
+        )
+        self._thread.start()
+
+    def _start_dev_server(self, host: str, port: int) -> None:
         def run():
-            # Use werkzeug's built-in server — fine for local single-user dashboard
             self._app.run(
                 host=host,
                 port=port,
@@ -296,9 +405,20 @@ class DashboardServer:
 
         self._thread = threading.Thread(target=run, daemon=True, name="DashboardServer")
         self._thread.start()
-        logger.info("Dashboard started at http://%s:%d/", host, port)
 
-    def stop(self) -> None:
-        # Flask dev server doesn't have a clean shutdown API;
-        # since it's a daemon thread it'll die with the main process.
-        logger.info("Dashboard server stopping (daemon thread will exit with main process).")
+    def stop(self, timeout: float = 5.0) -> None:
+        if self._server is not None:
+            # waitress: closing the server breaks its serve loop, so run() returns
+            # and the thread exits cleanly.
+            logger.info("Stopping dashboard server (graceful)…")
+            try:
+                self._server.close()
+            except Exception as exc:  # pragma: no cover - defensive
+                logger.debug("Error closing dashboard server: %s", exc)
+            if self._thread is not None:
+                self._thread.join(timeout=timeout)
+            self._server = None
+        else:
+            # Dev-server fallback has no clean shutdown API; as a daemon thread it
+            # dies with the main process.
+            logger.info("Dashboard server stopping (dev server — daemon thread exits with process).")

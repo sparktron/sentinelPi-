@@ -16,6 +16,7 @@ from __future__ import annotations
 import logging
 from collections import defaultdict, deque
 from datetime import datetime, timedelta
+from ..utils import clock
 from typing import Dict, List, Optional, Set, Tuple
 
 from .base import BaseDetector
@@ -64,13 +65,13 @@ class ARPDetector(BaseDetector):
             if device.is_gateway:
                 self._known_gateway_mac = device.mac
 
-    def process_event(self, event: object) -> List[Alert]:
+    def _process_event(self, event: object) -> List[Alert]:
         """Process a CapturedARP event from packet capture."""
         if not isinstance(event, CapturedARP):
             return []
         return self._analyze_arp(event)
 
-    def poll(self) -> List[Alert]:
+    def _poll(self) -> List[Alert]:
         """
         Cross-check /proc/net/arp against our known state.
 
@@ -79,7 +80,7 @@ class ARPDetector(BaseDetector):
         from ..capture.proc_reader import read_arp_table
         alerts: List[Alert] = []
         entries = read_arp_table()
-        now = datetime.utcnow()
+        now = clock.now()
 
         for entry in entries:
             mac = normalize_mac(entry.mac)

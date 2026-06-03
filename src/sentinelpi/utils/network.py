@@ -10,7 +10,15 @@ import ipaddress
 import re
 import socket
 import struct
+from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import TimeoutError as FuturesTimeout
 from typing import Optional
+
+# Shared pool for bounded, thread-safe reverse-DNS lookups. A small pool is
+# plenty — lookups are infrequent (per newly-seen device) and short-lived.
+# An abandoned (timed-out) lookup keeps a worker busy only until the OS
+# resolver returns, then the worker is reused.
+_RESOLVER_POOL = ThreadPoolExecutor(max_workers=4, thread_name_prefix="revdns")
 
 # RFC1918 private address ranges
 _PRIVATE_NETWORKS = [
@@ -119,28 +127,35 @@ def mac_to_vendor(mac: str) -> str:
     return _OUI_PREFIXES.get(prefix6, "")
 
 
+def _gethostbyaddr(ip: str) -> str:
+    """Blocking reverse lookup; returns hostname or empty string."""
+    try:
+        hostname, _, _ = socket.gethostbyaddr(ip)
+        return hostname
+    except (socket.herror, socket.gaierror, OSError):
+        return ""
+
+
 def reverse_dns(ip: str, timeout: float = 1.0) -> str:
     """
     Attempt a reverse DNS lookup with a short timeout.
 
-    Returns hostname or empty string on failure. Uses a subprocess workaround
-    since Python's socket.gethostbyaddr doesn't support per-call timeouts.
+    Returns hostname or empty string on failure or timeout.
+
+    Thread-safe: callers run on detector/inventory worker threads, so the
+    timeout cannot rely on signals (SIGALRM only works on the main thread).
+    Instead the blocking lookup runs in a shared thread pool and we bound it
+    with future.result(timeout). On timeout the worker is abandoned (it
+    finishes harmlessly in the background) and we return "".
     """
-    import signal
-
-    def _handler(signum, frame):
-        raise TimeoutError()
-
-    old_handler = signal.signal(signal.SIGALRM, _handler)
-    signal.setitimer(signal.ITIMER_REAL, timeout)
+    future = _RESOLVER_POOL.submit(_gethostbyaddr, ip)
     try:
-        hostname, _, _ = socket.gethostbyaddr(ip)
-        return hostname
-    except (socket.herror, socket.gaierror, OSError, TimeoutError):
+        return future.result(timeout=timeout)
+    except FuturesTimeout:
+        future.cancel()
         return ""
-    finally:
-        signal.setitimer(signal.ITIMER_REAL, 0)
-        signal.signal(signal.SIGALRM, old_handler)
+    except Exception:
+        return ""
 
 
 def domain_entropy(domain: str) -> float:

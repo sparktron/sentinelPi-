@@ -10,6 +10,7 @@ from __future__ import annotations
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime
+from .utils import clock
 from enum import Enum
 from typing import Optional
 
@@ -61,7 +62,7 @@ class Alert:
     alert_id: str = field(default_factory=lambda: str(uuid.uuid4()))
 
     # When this was detected
-    timestamp: datetime = field(default_factory=datetime.utcnow)
+    timestamp: datetime = field(default_factory=clock.now)
 
     # Classification
     severity: Severity = Severity.INFO
@@ -106,8 +107,8 @@ class Device:
     """
     ip: str
     mac: str
-    first_seen: datetime = field(default_factory=datetime.utcnow)
-    last_seen: datetime = field(default_factory=datetime.utcnow)
+    first_seen: datetime = field(default_factory=clock.now)
+    last_seen: datetime = field(default_factory=clock.now)
     hostname: str = ""
     vendor: str = ""               # OUI lookup result
     is_trusted: bool = False       # User explicitly trusts this device
@@ -129,7 +130,7 @@ class Connection:
     dst_port: int
     protocol: str           # "tcp" | "udp" | "icmp"
     state: str = ""         # e.g., "ESTABLISHED", "SYN_SENT"
-    timestamp: datetime = field(default_factory=datetime.utcnow)
+    timestamp: datetime = field(default_factory=clock.now)
     pid: Optional[int] = None
     process_name: str = ""
     bytes_sent: int = 0
@@ -148,7 +149,7 @@ class PacketSummary:
     protocol: str
     packet_count: int = 0
     byte_count: int = 0
-    window_start: datetime = field(default_factory=datetime.utcnow)
+    window_start: datetime = field(default_factory=clock.now)
     window_seconds: int = 60
 
 
