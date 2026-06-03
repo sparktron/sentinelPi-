@@ -205,3 +205,22 @@ reporting:
   daily_report_hour: 7    # 7 AM
   weekly_report_enabled: true
   weekly_report_day: 1    # Monday (0=Sunday, 1=Monday, ...)
+
+# =============================================================================
+# THREAT INTELLIGENCE
+# =============================================================================
+# Match every external destination IP/domain against public blocklists and
+# promote any hit to a HIGH alert. Opt-in: enabling adds a periodic network
+# fetch of the feeds below and matches all outbound traffic against them.
+# Feeds are cached on disk and reused if a refresh fails (offline-friendly).
+threat_intel:
+  enabled: false
+  cache_dir: "/var/lib/sentinelpi/threatintel"
+  refresh_interval_hours: 24
+  fetch_timeout_seconds: 30
+  # Available feeds: feodo (botnet C2 IPs), spamhaus_drop (hijacked netblocks),
+  # urlhaus (malware distribution hosts).
+  feeds:
+    - feodo
+    - spamhaus_drop
+    - urlhaus

@@ -44,6 +44,7 @@ CATEGORY_COOLDOWNS: Dict[AlertCategory, int] = {
     AlertCategory.AUTH_ANOMALY:       300,    # 5 min
     AlertCategory.TRAFFIC_SPIKE:      600,    # 10 min
     AlertCategory.PROCESS_ANOMALY:    1800,   # 30 min
+    AlertCategory.THREAT_INTEL:       3600,   # 1 hour — same bad dest, don't spam
     AlertCategory.SYSTEM:             300,
 }
 

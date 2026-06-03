@@ -27,8 +27,12 @@ and polish — none block Phase 1._
 ## Phase 1 — Visibility & intelligence enrichment
 Make every alert more actionable without new detectors.
 
-- **Threat-intel feeds.** Match destination IPs/domains against blocklists (abuse.ch URLhaus,
-  Feodo Tracker, Spamhaus DROP, FireHOL). Cache locally, refresh daily. Promote any hit to HIGH.
+- ✅ **Threat-intel feeds.** Match destination IPs/domains against blocklists (abuse.ch URLhaus,
+  Feodo Tracker, Spamhaus DROP). Cache locally, refresh daily, promote hits to HIGH.
+  _Shipped: `intel/threat_feeds.py` (service, pure parsers, injectable fetcher, IP/CIDR/domain
+  matching, on-disk cache, graceful degrade) + `detectors/threat_intel_detector.py`; opt-in via
+  `threat_intel.enabled`. Tests in `test_threat_intel.py`. FireHOL feed can be added to the `FEEDS`
+  catalog later._
 - **Local DNS-over-HTTPS / DoH detection.** Flag clients bypassing your DNS by talking DoH/DoT to
   known resolvers — a common exfil/evasion vector and directly complements the existing DNS detector.
 - **Passive OS / device fingerprinting.** Use existing ARP/packet data + OUI vendor + open-port

@@ -52,6 +52,8 @@ from .detectors.connection_detector import ConnectionDetector
 from .detectors.dns_detector import DNSDetector
 from .detectors.lateral_movement_detector import LateralMovementDetector
 from .detectors.auth_log_detector import AuthLogDetector
+from .detectors.threat_intel_detector import ThreatIntelDetector
+from .intel.threat_feeds import ThreatIntelService
 from .capture.packet_capture import PacketCapture
 from .utils.geo import init_geo
 
@@ -180,6 +182,17 @@ class SentinelPi:
         self._lateral_detector = LateralMovementDetector(**detector_kwargs)
         self._auth_detector = AuthLogDetector(**detector_kwargs)
 
+        # Threat-intelligence service + detector (opt-in). The service loads any
+        # cached feeds now; a background thread refreshes them (see _start_threat_intel).
+        self._intel_service: Optional[ThreatIntelService] = None
+        self._threat_intel_detector: Optional[ThreatIntelDetector] = None
+        if self.config.threat_intel.enabled:
+            self._intel_service = ThreatIntelService(self.config.threat_intel)
+            self._intel_service.load()
+            self._threat_intel_detector = ThreatIntelDetector(
+                intel=self._intel_service, **detector_kwargs
+            )
+
         # Packet capture event queue and router
         self._capture_queue: queue.Queue = queue.Queue(maxsize=50_000)
         self._packet_capture: Optional[PacketCapture] = None
@@ -265,6 +278,8 @@ class SentinelPi:
             self._connection_detector,
             self._lateral_detector,
         ]
+        if self._threat_intel_detector is not None:
+            event_detectors.append(self._threat_intel_detector)
 
         def _route_events():
             logger.info("Event router started.")
@@ -315,6 +330,31 @@ class SentinelPi:
             self._threads.append(t)
             t.start()
             logger.debug("Started thread: %s", name)
+
+    def _start_threat_intel(self) -> None:
+        """Refresh threat-intel feeds on startup, then on a daily cadence."""
+        if self._intel_service is None:
+            return
+
+        interval = max(1, self.config.threat_intel.refresh_interval_hours) * 3600
+
+        def _refresh_loop():
+            logger.info("Threat-intel refresh thread started.")
+            while not self._stop_event.is_set():
+                try:
+                    self._intel_service.refresh()
+                    logger.info(
+                        "Threat intel active: %d indicators loaded.",
+                        self._intel_service.indicator_count,
+                    )
+                except Exception as exc:
+                    logger.error("Threat-intel refresh failed: %s", exc)
+                self._stop_event.wait(timeout=interval)
+            logger.info("Threat-intel refresh thread stopped.")
+
+        t = threading.Thread(target=_refresh_loop, daemon=True, name="ThreatIntelRefresh")
+        self._threads.append(t)
+        t.start()
 
     def _start_dashboard(self) -> None:
         """Start the web dashboard if enabled."""
@@ -396,6 +436,8 @@ class SentinelPi:
 
         logger.info("Starting web dashboard...")
         self._start_dashboard()
+
+        self._start_threat_intel()
 
         # Emit a system startup alert
         from .models import Alert, AlertCategory, Severity

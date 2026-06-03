@@ -162,6 +162,18 @@ class ReportingConfig:
 
 
 @dataclass
+class ThreatIntelConfig:
+    # Opt-in: enabling adds a periodic network fetch of public blocklists and
+    # matches every external destination IP/domain against them.
+    enabled: bool = False
+    cache_dir: str = "/var/lib/sentinelpi/threatintel"
+    refresh_interval_hours: int = 24
+    fetch_timeout_seconds: int = 30
+    # Which feeds to load (see intel/threat_feeds.py FEEDS for the catalog).
+    feeds: List[str] = field(default_factory=lambda: ["feodo", "urlhaus", "spamhaus_drop"])
+
+
+@dataclass
 class Config:
     """Root configuration object. All subconfigs have safe defaults."""
     network: NetworkConfig = field(default_factory=NetworkConfig)
@@ -173,6 +185,7 @@ class Config:
     logging: LoggingConfig = field(default_factory=LoggingConfig)
     monitoring: MonitoringConfig = field(default_factory=MonitoringConfig)
     reporting: ReportingConfig = field(default_factory=ReportingConfig)
+    threat_intel: ThreatIntelConfig = field(default_factory=ThreatIntelConfig)
 
     # Domains/IPs/ports to never alert on
     whitelist_domains: List[str] = field(default_factory=list)
