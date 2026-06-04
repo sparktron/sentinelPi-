@@ -188,6 +188,25 @@ class ThreatIntelConfig:
 
 
 @dataclass
+class ResponseConfig:
+    """
+    Active-response settings. Safe by construction: nothing executes unless
+    BOTH `enabled` is true AND `dry_run` is false, and then only for the
+    explicitly opted-in responders/categories.
+    """
+    enabled: bool = False        # master switch — no responder runs unless true
+    dry_run: bool = True         # even when enabled, only log intended actions
+
+    # Firewall-block responder (per-action opt-in).
+    firewall_block_enabled: bool = False
+    firewall_backend: str = "iptables"          # "iptables" | "nftables"
+    # Only auto-block on these alert categories / at/above this severity.
+    auto_block_categories: List[str] = field(default_factory=lambda: ["threat_intel"])
+    auto_block_min_severity: str = "high"
+    block_duration_seconds: int = 3600          # 0 = permanent (until restart/manual)
+
+
+@dataclass
 class Config:
     """Root configuration object. All subconfigs have safe defaults."""
     network: NetworkConfig = field(default_factory=NetworkConfig)
@@ -200,6 +219,7 @@ class Config:
     monitoring: MonitoringConfig = field(default_factory=MonitoringConfig)
     reporting: ReportingConfig = field(default_factory=ReportingConfig)
     threat_intel: ThreatIntelConfig = field(default_factory=ThreatIntelConfig)
+    response: ResponseConfig = field(default_factory=ResponseConfig)
 
     # Domains/IPs/ports to never alert on
     whitelist_domains: List[str] = field(default_factory=list)

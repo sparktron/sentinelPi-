@@ -238,3 +238,24 @@ threat_intel:
     - feodo
     - spamhaus_drop
     - urlhaus
+
+# =============================================================================
+# ACTIVE RESPONSE  (Phase 2 — detect-and-respond)
+# =============================================================================
+# Safe by construction: a responder only EXECUTES when BOTH `enabled` is true
+# AND `dry_run` is false. With `dry_run` true (the default) responders still
+# decide and log what they *would* do, so you can watch them for days before
+# arming. Each responder is additionally opt-in.
+response:
+  enabled: false          # master switch — nothing runs unless true
+  dry_run: true           # even when enabled, only log intended actions
+
+  # Firewall quarantine: insert iptables/nftables DROP rules for a malicious IP.
+  firewall_block_enabled: false
+  firewall_backend: iptables          # iptables | nftables
+  # Only auto-block on these categories, at/above this severity. Default is the
+  # high-confidence threat-intel category only (known-bad, not heuristics).
+  auto_block_categories:
+    - threat_intel
+  auto_block_min_severity: high
+  block_duration_seconds: 3600        # 0 = until restart / manual removal
