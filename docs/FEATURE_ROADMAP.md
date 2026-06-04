@@ -109,8 +109,12 @@ Today SentinelPi sees its own host + the LAN it can sniff. To protect *the netwo
   `ForwardNotifier` (sensor → collector over HTTP, shared-key auth, async queue, no event bouncing);
   collector `POST /api/ingest` (`alert_from_dict`, constant-time key check, tags `extra.sensor`, runs
   the alert through the full pipeline) active when `collector_key` is set. Tests in `test_cluster.py`._
-  _Follow-ups: cross-sensor correlation (one event for a VLAN-spanning sweep), mTLS, and per-sensor
-  views in the dashboard._
+  - ✅ **Cross-sensor correlation.** _Shipped: `alerts/correlator.py` `IncidentCorrelator` — buckets
+    fired alerts by actor in a sliding window; an actor crossing `min_sensors` sensors or
+    `min_targets` targets raises one escalated INCIDENT alert (HIGH/CRITICAL). Wired into the
+    AlertManager (only sees alerts that actually fire; INCIDENTs never re-correlate). Gated on
+    `correlation.enabled`. Tests in `test_correlator.py`._
+  _Follow-ups: mTLS, and per-sensor views in the dashboard._
 - **Router/firewall integration.** Ingest flow data (NetFlow/IPFIX, `conntrack`, or pfSense/OPNsense
   logs) so you see traffic that never crosses the Pi's segment.
 - **Span/mirror-port mode.** Document and support capture from a switch mirror port to monitor the

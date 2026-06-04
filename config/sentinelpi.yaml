@@ -313,3 +313,16 @@ cluster:
   collector_url: ""           # sensor: https://collector-host:8888/api/ingest
   collector_key: ""           # shared secret: sensor sends it; collector requires it
   forward_min_severity: low   # sensor: only forward alerts at/above this severity
+
+# =============================================================================
+# CORRELATION  (Phase 3 — turn alert noise into incidents)
+# =============================================================================
+# Group an actor's alerts seen across multiple sensors, or against many targets,
+# within a time window into one escalated INCIDENT alert. Most useful on a
+# collector that ingests every sensor's alerts.
+correlation:
+  enabled: false
+  window_seconds: 300
+  min_sensors: 2          # actor seen by >= this many sensors -> incident
+  min_targets: 5          # OR actor hit >= this many distinct targets -> incident
+  cooldown_seconds: 600

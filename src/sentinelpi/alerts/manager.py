@@ -49,6 +49,7 @@ CATEGORY_COOLDOWNS: Dict[AlertCategory, int] = {
     AlertCategory.PROCESS_ANOMALY:    1800,   # 30 min
     AlertCategory.THREAT_INTEL:       3600,   # 1 hour — same bad dest, don't spam
     AlertCategory.HONEYPOT:           300,    # 5 min per scanning source
+    AlertCategory.INCIDENT:           600,    # 10 min per correlated actor
     AlertCategory.SYSTEM:             300,
 }
 
@@ -79,6 +80,11 @@ class AlertManager:
         self._notifiers: List[BaseNotifier] = []
         # Optional active-response orchestrator (Phase 2); off unless wired up.
         self._responder_manager = None
+        # Optional incident correlator (Phase 3); built when enabled.
+        self._correlator = None
+        if getattr(config, "correlation", None) and config.correlation.enabled:
+            from .correlator import IncidentCorrelator
+            self._correlator = IncidentCorrelator(config)
 
         # dedup_key → last alert time (in-memory fast path; backed by DB)
         self._recent_dedup: Dict[str, datetime] = {}
@@ -170,6 +176,16 @@ class AlertManager:
                 self._responder_manager.handle(alert)
             except Exception as exc:
                 logger.error("Responder manager failed: %s", exc)
+
+        # 8. Incident correlation (Phase 3). Outside the lock; a raised incident
+        #    is processed normally (and won't re-correlate — INCIDENT is skipped).
+        if self._correlator is not None:
+            try:
+                incident = self._correlator.observe(alert)
+                if incident is not None:
+                    self.process_one(incident)
+            except Exception as exc:
+                logger.error("Correlator failed: %s", exc)
 
         logger.info(
             "[%s] %s — %s (%s)",

@@ -265,6 +265,20 @@ class ClusterConfig:
 
 
 @dataclass
+class CorrelationConfig:
+    """
+    Incident correlation: group an actor's alerts seen across multiple sensors
+    or against many targets within a window into one escalated INCIDENT alert.
+    Runs on whichever node sees the alerts — most useful on a collector.
+    """
+    enabled: bool = False
+    window_seconds: int = 300
+    min_sensors: int = 2        # actor seen by >= this many sensors -> incident
+    min_targets: int = 5        # OR actor hit >= this many distinct targets -> incident
+    cooldown_seconds: int = 600
+
+
+@dataclass
 class Config:
     """Root configuration object. All subconfigs have safe defaults."""
     network: NetworkConfig = field(default_factory=NetworkConfig)
@@ -279,6 +293,7 @@ class Config:
     threat_intel: ThreatIntelConfig = field(default_factory=ThreatIntelConfig)
     response: ResponseConfig = field(default_factory=ResponseConfig)
     cluster: ClusterConfig = field(default_factory=ClusterConfig)
+    correlation: CorrelationConfig = field(default_factory=CorrelationConfig)
 
     # Domains/IPs/ports to never alert on
     whitelist_domains: List[str] = field(default_factory=list)
