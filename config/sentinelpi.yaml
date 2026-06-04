@@ -100,6 +100,11 @@ monitoring:
   # If disabled, proc polling is used (no root required, slightly less detail)
   packet_capture_enabled: true
 
+  # Per-host active-hours profiling: flag a host active during an hour it has
+  # never been active before (e.g. a daytime laptop beaconing at 3am).
+  active_hours_detection_enabled: true
+  active_hours_min_known: 6        # require this many known hours before flagging
+
   # Honeypot / canary ports: open fake services; ANY connection is high-fidelity
   # evidence of internal scanning -> HIGH alert. Ports < 1024 need root to bind.
   honeypot_enabled: false

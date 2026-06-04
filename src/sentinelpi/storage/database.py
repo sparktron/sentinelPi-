@@ -28,7 +28,7 @@ from ..models import Alert, AlertStatus, Device, Severity, AlertCategory
 logger = logging.getLogger(__name__)
 
 # Current schema version — bump when adding migrations
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 5
 
 # Thread-local storage for per-thread SQLite connections
 _thread_local = threading.local()
@@ -122,6 +122,8 @@ class Database:
             self._migrate_v3(conn)
         if current_version < 4:
             self._migrate_v4(conn)
+        if current_version < 5:
+            self._migrate_v5(conn)
 
         conn.execute("DELETE FROM schema_version")
         conn.execute("INSERT INTO schema_version VALUES (?)", (SCHEMA_VERSION,))
@@ -261,6 +263,20 @@ class Database:
             CREATE INDEX IF NOT EXISTS idx_host_countries_src ON host_countries(src_ip);
         """)
         logger.info("Database migration v4 applied.")
+
+    def _migrate_v5(self, conn: sqlite3.Connection) -> None:
+        """Per-host activity-hour baseline (for unusual-hour detection)."""
+        conn.executescript("""
+            CREATE TABLE IF NOT EXISTS host_activity_hours (
+                ip         TEXT NOT NULL,
+                hour       INTEGER NOT NULL,
+                first_seen TEXT NOT NULL,
+                PRIMARY KEY (ip, hour)
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_host_activity_ip ON host_activity_hours(ip);
+        """)
+        logger.info("Database migration v5 applied.")
 
     # ------------------------------------------------------------------
     # Alert CRUD
@@ -549,6 +565,27 @@ class Database:
             "SELECT country FROM host_countries WHERE src_ip=?", (src_ip,)
         ).fetchall()
         return {r["country"] for r in rows}
+
+    def record_host_hour(self, ip: str, hour: int) -> bool:
+        """
+        Record that ``ip`` was active during ``hour`` (0-23). Returns True the
+        first time we've seen this (ip, hour) pair. Atomic via INSERT OR IGNORE.
+        """
+        now = clock.now().isoformat()
+        with self._conn() as conn:
+            cur = conn.execute(
+                "INSERT OR IGNORE INTO host_activity_hours (ip, hour, first_seen) VALUES (?,?,?)",
+                (ip, hour, now),
+            )
+            return cur.rowcount > 0
+
+    def get_host_hours(self, ip: str) -> set:
+        """Return the set of hours-of-day ``ip`` has previously been active."""
+        conn = self._get_connection()
+        rows = conn.execute(
+            "SELECT hour FROM host_activity_hours WHERE ip=?", (ip,)
+        ).fetchall()
+        return {r["hour"] for r in rows}
 
     # ------------------------------------------------------------------
     # DNS observations

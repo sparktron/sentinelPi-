@@ -160,6 +160,12 @@ class MonitoringConfig:
     honeypot_bind_host: str = "0.0.0.0"
     honeypot_ports: List[int] = field(default_factory=lambda: [23, 2323, 3389, 8081, 5555])
 
+    # Per-host active-hours profiling: flag a host active at an hour it has never
+    # been active before (e.g. a daytime laptop beaconing at 3am).
+    active_hours_detection_enabled: bool = True
+    # Only flag once a host has an established profile (this many distinct hours).
+    active_hours_min_known: int = 6
+
     # DHCP lease ingestion for authoritative device identity (names from the
     # router/DHCP server beat ARP-inferred / reverse-DNS guesses).
     dhcp_leases_enabled: bool = False

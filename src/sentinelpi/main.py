@@ -62,6 +62,7 @@ from .detectors.auth_log_detector import AuthLogDetector
 from .detectors.doh_detector import DoHDetector
 from .detectors.geo_country_detector import GeoCountryDetector
 from .detectors.asn_detector import ASNReputationDetector
+from .detectors.active_hours_detector import ActiveHoursDetector
 from .detectors.threat_intel_detector import ThreatIntelDetector
 from .intel.threat_feeds import ThreatIntelService
 from .capture.packet_capture import PacketCapture
@@ -215,6 +216,11 @@ class SentinelPi:
         if self.config.monitoring.asn_reputation_enabled:
             self._asn_detector = ASNReputationDetector(**detector_kwargs)
 
+        # Per-host active-hours anomaly detector.
+        self._active_hours_detector: Optional[ActiveHoursDetector] = None
+        if self.config.monitoring.active_hours_detection_enabled:
+            self._active_hours_detector = ActiveHoursDetector(**detector_kwargs)
+
         # Threat-intelligence service + detector (opt-in). The service loads any
         # cached feeds now; a background thread refreshes them (see _start_threat_intel).
         self._intel_service: Optional[ThreatIntelService] = None
@@ -347,6 +353,8 @@ class SentinelPi:
             event_detectors.append(self._geo_country_detector)
         if self._asn_detector is not None:
             event_detectors.append(self._asn_detector)
+        if self._active_hours_detector is not None:
+            event_detectors.append(self._active_hours_detector)
         if self._threat_intel_detector is not None:
             event_detectors.append(self._threat_intel_detector)
 

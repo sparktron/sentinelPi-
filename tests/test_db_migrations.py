@@ -31,6 +31,7 @@ EXPECTED_TABLES = {
     "connection_events",
     "file_hashes",
     "host_countries",
+    "host_activity_hours",
 }
 
 

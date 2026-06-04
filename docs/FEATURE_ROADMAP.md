@@ -130,6 +130,11 @@ Today SentinelPi sees its own host + the LAN it can sniff. To protect *the netwo
 ## Phase 4 — Smarter detection
 - **Per-host behavioral profiles** beyond connection counts: typical destinations, ports, bytes,
   active hours, peer set. Alert on deviation from the host's *own* learned profile.
+  - ✅ **Active-hours profile.** _Shipped: `detectors/active_hours_detector.py` — learns each host's
+    normal hours-of-activity (persisted in `host_activity_hours`, schema v5) and flags the first
+    activity in a never-seen hour, once the host's profile is established (`active_hours_min_known`)
+    and past the learning phase. Tests in `test_active_hours.py`._ Remaining profile dimensions
+    (typical ports/bytes/peer-set) are follow-ups.
 - **Sequence/correlation engine.** Turn related alerts into **incidents** (e.g. new device → port
   scan → admin connection = "possible intrusion in progress") with a single timeline, instead of N
   independent alerts. This is the highest-leverage UX + accuracy win.
