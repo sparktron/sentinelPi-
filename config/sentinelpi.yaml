@@ -106,6 +106,12 @@ monitoring:
   honeypot_bind_host: 0.0.0.0
   honeypot_ports: [23, 2323, 3389, 8081, 5555]
 
+  # DHCP lease ingestion: name devices from your router/DHCP server (authoritative)
+  # instead of guessing via reverse DNS. Point at your leases file.
+  dhcp_leases_enabled: false
+  dhcp_leases_path: /var/lib/misc/dnsmasq.leases
+  dhcp_leases_format: dnsmasq          # dnsmasq | isc
+
   # Quiet hours: suppress non-critical alerts between these hours (24h format)
   quiet_hours_enabled: false
   quiet_hours_start: 23   # 11 PM

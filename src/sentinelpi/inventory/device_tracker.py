@@ -28,6 +28,7 @@ from ..capture.proc_reader import ARPEntry, read_arp_table
 from ..storage.database import Database
 from ..utils.network import mac_to_vendor, normalize_mac, reverse_dns
 from .device_classifier import classify_device, UNKNOWN
+from .dhcp_leases import DHCPLeaseSource
 
 logger = logging.getLogger(__name__)
 
@@ -68,6 +69,14 @@ class DeviceTracker:
         self._trusted_ips = get_trusted_ips(config)
         self._trusted_macs = get_trusted_macs(config)
 
+        # Authoritative device identity from DHCP leases (optional).
+        self._dhcp: Optional[DHCPLeaseSource] = None
+        if config.monitoring.dhcp_leases_enabled:
+            self._dhcp = DHCPLeaseSource(
+                config.monitoring.dhcp_leases_path, config.monitoring.dhcp_leases_format
+            )
+            self._dhcp.refresh()
+
         logger.info(
             "DeviceTracker initialized with %d known devices.", len(self._devices_by_ip)
         )
@@ -105,6 +114,10 @@ class DeviceTracker:
         """
         entries = read_arp_table()
         alerts: List[Alert] = []
+
+        # Keep authoritative DHCP identity fresh each poll.
+        if self._dhcp is not None:
+            self._dhcp.refresh()
 
         for entry in entries:
             entry.mac = normalize_mac(entry.mac)
@@ -213,12 +226,21 @@ class DeviceTracker:
         """Create a new Device from an ARP entry, with optional hostname resolution."""
         vendor = mac_to_vendor(entry.mac)
         hostname = ""
-        # Reverse DNS — skip if it would be too slow (we're in a poll loop)
-        # Attempt with a short timeout only for first-seen devices
-        try:
-            hostname = reverse_dns(entry.ip, timeout=0.5)
-        except Exception as exc:
-            logger.debug("Reverse DNS failed for %s: %s", entry.ip, exc)
+        identity_source = ""
+
+        # Authoritative identity first: the DHCP server knows the name the device
+        # announced. Falls back to reverse DNS only if there's no lease hostname.
+        if self._dhcp is not None:
+            hostname = self._dhcp.hostname_for(entry.mac)
+            if hostname:
+                identity_source = "dhcp"
+        if not hostname:
+            try:
+                hostname = reverse_dns(entry.ip, timeout=0.5)
+                if hostname:
+                    identity_source = "reverse_dns"
+            except Exception as exc:
+                logger.debug("Reverse DNS failed for %s: %s", entry.ip, exc)
 
         is_trusted = (entry.ip in self._trusted_ips or entry.mac in self._trusted_macs)
         is_gateway = (entry.ip == self.config.network.gateway_ip or
@@ -241,6 +263,7 @@ class DeviceTracker:
             extra={
                 "device_type": classification.device_type,
                 "device_type_confidence": round(classification.confidence, 2),
+                "identity_source": identity_source,
             },
         )
 

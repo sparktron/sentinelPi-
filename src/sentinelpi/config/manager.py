@@ -160,6 +160,12 @@ class MonitoringConfig:
     honeypot_bind_host: str = "0.0.0.0"
     honeypot_ports: List[int] = field(default_factory=lambda: [23, 2323, 3389, 8081, 5555])
 
+    # DHCP lease ingestion for authoritative device identity (names from the
+    # router/DHCP server beat ARP-inferred / reverse-DNS guesses).
+    dhcp_leases_enabled: bool = False
+    dhcp_leases_path: str = "/var/lib/misc/dnsmasq.leases"
+    dhcp_leases_format: str = "dnsmasq"         # "dnsmasq" | "isc"
+
     # Sensitivity profile affects multiple thresholds
     # Options: conservative | balanced | aggressive
     sensitivity_profile: str = "balanced"
