@@ -76,6 +76,8 @@ class AlertManager:
         self.device_tracker = device_tracker
         self._lock = threading.Lock()
         self._notifiers: List[BaseNotifier] = []
+        # Optional active-response orchestrator (Phase 2); off unless wired up.
+        self._responder_manager = None
 
         # dedup_key → last alert time (in-memory fast path; backed by DB)
         self._recent_dedup: Dict[str, datetime] = {}
@@ -88,6 +90,10 @@ class AlertManager:
         with self._lock:
             self._notifiers.append(notifier)
         logger.debug("Registered notifier: %s", notifier.__class__.__name__)
+
+    def set_responder_manager(self, responder_manager) -> None:
+        """Wire in an active-response orchestrator (Phase 2). Optional."""
+        self._responder_manager = responder_manager
 
     def process(self, alerts: List[Alert]) -> int:
         """
@@ -155,6 +161,14 @@ class AlertManager:
                 notifier.send(alert)
             except Exception as exc:
                 logger.error("Notifier %s failed: %s", notifier.__class__.__name__, exc)
+
+        # 7. Active response (Phase 2). Inert unless a responder manager is wired
+        #    in and explicitly enabled; dry-run by default.
+        if self._responder_manager is not None:
+            try:
+                self._responder_manager.handle(alert)
+            except Exception as exc:
+                logger.error("Responder manager failed: %s", exc)
 
         logger.info(
             "[%s] %s — %s (%s)",

@@ -46,6 +46,8 @@ from .baseline.engine import BaselineEngine
 from .inventory.device_tracker import DeviceTracker
 from .alerts.manager import AlertManager
 from .alerts.notifiers import ConsoleNotifier, FileNotifier, EmailNotifier, WebhookNotifier
+from .responders.manager import ResponderManager
+from .responders.firewall import FirewallResponder
 from .detectors.arp_detector import ARPDetector
 from .detectors.beacon_detector import BeaconDetector
 from .detectors.connection_detector import ConnectionDetector
@@ -174,6 +176,10 @@ class SentinelPi:
         # Register notifiers
         self._setup_notifiers()
 
+        # Active-response orchestrator (Phase 2) — fully inert unless enabled.
+        self._responder_manager: Optional[ResponderManager] = None
+        self._setup_responders()
+
         # Initialize detectors
         detector_kwargs = dict(
             config=self.config,
@@ -250,6 +256,23 @@ class SentinelPi:
                 "Running in degraded mode — %d optional feature(s) disabled: %s",
                 len(disabled), "; ".join(f"{name} ({why})" for name, why in disabled),
             )
+
+    def _setup_responders(self) -> None:
+        """
+        Wire up the active-response orchestrator. Fully inert unless
+        response.enabled; even then dry-run by default (see ResponderManager).
+        """
+        rc = self.config.response
+        if not rc.enabled:
+            return
+        manager = ResponderManager(self.config)
+        if rc.firewall_block_enabled:
+            manager.add_responder(FirewallResponder(self.config))
+        self._alert_manager.set_responder_manager(manager)
+        self._responder_manager = manager
+        mode = "DRY-RUN" if rc.dry_run else "ARMED"
+        logger.warning("Active response ENABLED (%s). Responders: %d.",
+                       mode, len(manager._responders))
 
     def _setup_notifiers(self) -> None:
         """Register enabled notifiers with the alert manager."""

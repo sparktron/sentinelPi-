@@ -65,8 +65,13 @@ Make every alert more actionable without new detectors.
 ## Phase 2 — Active protection (the "protector" leap)
 Move from detect-only to detect-and-respond. **Gate every action behind explicit config + dry-run.**
 
-- **Response actions framework.** A pluggable `Responder` interface mirroring `Notifier`:
-  - **Quarantine** a host via `iptables`/`nftables` drop rules or switch-port ACL.
+- ✅ **Response actions framework.** A pluggable `Responder` interface mirroring `Notifier`.
+  _Shipped: `responders/` (`BaseResponder`/`ResponderAction`, `ResponderManager`, `FirewallResponder`).
+  Two-key safety model — executes only when `response.enabled` AND not `response.dry_run`; otherwise
+  plans + records without running. Per-responder opt-in, category/severity allowlist (default:
+  threat_intel/HIGH only), never blocks private/whitelisted IPs. Wired into the AlertManager.
+  Tests in `test_responders.py`._
+  - ✅ **Quarantine** a host via `iptables`/`nftables` drop rules (outbound + inbound DROP).
   - **ARP-spoof defense:** pin gateway MAC and auto-restore the correct ARP entry on detected poisoning.
   - **DNS sinkhole:** push a block to a local Pi-hole/Unbound via its API when a DGA/C2 domain fires.
   - **Kill switch:** disable a port or de-auth a Wi-Fi client (via router API / hostapd) on confirmed compromise.
