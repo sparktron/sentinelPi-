@@ -45,7 +45,9 @@ from .storage.database import Database
 from .baseline.engine import BaselineEngine
 from .inventory.device_tracker import DeviceTracker
 from .alerts.manager import AlertManager
-from .alerts.notifiers import ConsoleNotifier, FileNotifier, EmailNotifier, WebhookNotifier
+from .alerts.notifiers import (
+    ConsoleNotifier, FileNotifier, EmailNotifier, WebhookNotifier, ForwardNotifier,
+)
 from .responders.manager import ResponderManager
 from .responders.firewall import FirewallResponder
 from .responders.dns_sinkhole import DNSSinkholeResponder
@@ -309,6 +311,12 @@ class SentinelPi:
         if self.config.notifications.webhook_enabled and self.config.notifications.webhook_url:
             self._alert_manager.add_notifier(WebhookNotifier(self.config))
             logger.info("Webhook notifications enabled: %s", self.config.notifications.webhook_url)
+
+        # Sensor mode: forward alerts to a central collector (Phase 3).
+        if self.config.cluster.role == "sensor" and self.config.cluster.collector_url:
+            self._alert_manager.add_notifier(ForwardNotifier(self.config))
+            logger.info("Sensor mode: forwarding alerts to collector %s",
+                        self.config.cluster.collector_url)
 
     def _start_packet_capture(self) -> None:
         """Start scapy packet capture and event routing thread."""

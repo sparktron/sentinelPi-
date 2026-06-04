@@ -240,6 +240,25 @@ class ResponseConfig:
 
 
 @dataclass
+class ClusterConfig:
+    """
+    Multi-host sensor/collector settings (Phase 3).
+
+    - standalone (default): no forwarding, no ingest — single host.
+    - sensor:   forwards its alerts to a central collector.
+    - collector: exposes an ingest endpoint that accepts sensors' alerts.
+
+    The ingest endpoint is active whenever ``collector_key`` is set, regardless
+    of role, so a collector is simply a host with a key (and usually the dash).
+    """
+    role: str = "standalone"          # standalone | sensor | collector
+    sensor_id: str = ""               # id this sensor stamps on forwarded alerts
+    collector_url: str = ""           # sensor: e.g. https://collector:8888/api/ingest
+    collector_key: str = ""           # shared secret (sensor sends; collector requires)
+    forward_min_severity: str = "low"
+
+
+@dataclass
 class Config:
     """Root configuration object. All subconfigs have safe defaults."""
     network: NetworkConfig = field(default_factory=NetworkConfig)
@@ -253,6 +272,7 @@ class Config:
     reporting: ReportingConfig = field(default_factory=ReportingConfig)
     threat_intel: ThreatIntelConfig = field(default_factory=ThreatIntelConfig)
     response: ResponseConfig = field(default_factory=ResponseConfig)
+    cluster: ClusterConfig = field(default_factory=ClusterConfig)
 
     # Domains/IPs/ports to never alert on
     whitelist_domains: List[str] = field(default_factory=list)

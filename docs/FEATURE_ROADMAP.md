@@ -104,9 +104,13 @@ Move from detect-only to detect-and-respond. **Gate every action behind explicit
 ## Phase 3 — Multi-host / whole-network coverage
 Today SentinelPi sees its own host + the LAN it can sniff. To protect *the network*:
 
-- **Sensor + collector architecture.** Run lightweight SentinelPi **sensors** on multiple Pis /
-  VLANs that forward events to a central **collector** (gRPC or mTLS HTTP). Correlate across sensors
-  so a host sweep spanning VLANs is seen as one event.
+- ✅ **Sensor + collector architecture (foundation).** Lightweight sensors forward their alerts to a
+  central collector that aggregates them. _Shipped: `ClusterConfig` (role standalone/sensor/collector);
+  `ForwardNotifier` (sensor → collector over HTTP, shared-key auth, async queue, no event bouncing);
+  collector `POST /api/ingest` (`alert_from_dict`, constant-time key check, tags `extra.sensor`, runs
+  the alert through the full pipeline) active when `collector_key` is set. Tests in `test_cluster.py`._
+  _Follow-ups: cross-sensor correlation (one event for a VLAN-spanning sweep), mTLS, and per-sensor
+  views in the dashboard._
 - **Router/firewall integration.** Ingest flow data (NetFlow/IPFIX, `conntrack`, or pfSense/OPNsense
   logs) so you see traffic that never crosses the Pi's segment.
 - **Span/mirror-port mode.** Document and support capture from a switch mirror port to monitor the

@@ -99,6 +99,42 @@ class Alert:
             self.dedup_key = f"{self.category.value}:{self.affected_host}:{self.title}"
 
 
+def alert_from_dict(data: dict) -> Alert:
+    """
+    Reconstruct an Alert from its JSON dict form (the inverse of the notifier
+    serialization). Used by the collector to ingest a sensor's forwarded alert.
+    Unknown/invalid severity or category fall back to safe defaults.
+    """
+    def _enum(enum_cls, value, default):
+        try:
+            return enum_cls(value)
+        except (ValueError, TypeError):
+            return default
+
+    ts = data.get("timestamp")
+    try:
+        timestamp = datetime.fromisoformat(ts) if ts else clock.now()
+    except (ValueError, TypeError):
+        timestamp = clock.now()
+
+    return Alert(
+        alert_id=data.get("alert_id") or str(uuid.uuid4()),
+        timestamp=timestamp,
+        severity=_enum(Severity, data.get("severity"), Severity.INFO),
+        category=_enum(AlertCategory, data.get("category"), AlertCategory.SYSTEM),
+        affected_host=data.get("affected_host", "") or "",
+        affected_mac=data.get("affected_mac", "") or "",
+        related_host=data.get("related_host", "") or "",
+        title=data.get("title", "") or "",
+        description=data.get("description", "") or "",
+        recommended_action=data.get("recommended_action", "") or "",
+        confidence=float(data.get("confidence", 1.0) or 1.0),
+        confidence_rationale=data.get("confidence_rationale", "") or "",
+        dedup_key=data.get("dedup_key", "") or "",
+        extra=dict(data.get("extra") or {}),
+    )
+
+
 @dataclass
 class Device:
     """

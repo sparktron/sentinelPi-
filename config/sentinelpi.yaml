@@ -294,3 +294,16 @@ response:
   killswitch_command: []              # e.g., ["/usr/local/bin/quarantine.sh", "{ip}", "{mac}"]
   killswitch_categories: []           # e.g., ["honeypot", "threat_intel"]
   killswitch_min_severity: critical
+
+# =============================================================================
+# CLUSTER  (Phase 3 — multi-host coverage)
+# =============================================================================
+# Run lightweight SENSORS on several Pis/VLANs that forward their alerts to one
+# central COLLECTOR, which aggregates them. The collector is just a host with a
+# collector_key set (usually the one running the dashboard).
+cluster:
+  role: standalone            # standalone | sensor | collector
+  sensor_id: ""               # sensor: an id stamped on forwarded alerts (e.g. "pi-garage")
+  collector_url: ""           # sensor: https://collector-host:8888/api/ingest
+  collector_key: ""           # shared secret: sensor sends it; collector requires it
+  forward_min_severity: low   # sensor: only forward alerts at/above this severity
