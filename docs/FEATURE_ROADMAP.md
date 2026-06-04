@@ -51,8 +51,11 @@ Make every alert more actionable without new detectors.
   phase), staying silent without a GeoIP DB. Gated on `monitoring.geo_enabled`. Tests in
   `test_geo_country_detector.py`. Follow-up: attach country to **every** external-connection alert
   (broad enrichment of the other detectors), not just this one._
-- **ASN / hosting-provider tagging.** Connections to bulletproof/anonymizing ASNs (via an IP→ASN
-  db) raise suspicion scores.
+- ✅ **ASN / hosting-provider tagging.** Connections to suspicious ASNs/operators flag and raise
+  suspicion. _Shipped: `utils/asn.py` (GeoLite2-ASN lookup, graceful degrade, singleton) +
+  `detectors/asn_detector.py` (matches configured `suspicious_asns` / operator-name keywords +
+  a small built-in seed; MEDIUM alert that bumps device suspicion via the manager). Gated on
+  `monitoring.asn_reputation_enabled`. Tests in `test_asn_detector.py`._
 
 ---
 
