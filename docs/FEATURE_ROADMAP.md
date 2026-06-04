@@ -115,8 +115,11 @@ Today SentinelPi sees its own host + the LAN it can sniff. To protect *the netwo
   logs) so you see traffic that never crosses the Pi's segment.
 - **Span/mirror-port mode.** Document and support capture from a switch mirror port to monitor the
   whole subnet, not just broadcast/local traffic.
-- **DHCP + device-identity source of truth.** Pull leases from the router so device naming and
-  "new device" detection are authoritative rather than ARP-inferred.
+- ✅ **DHCP + device-identity source of truth.** Name devices from the DHCP server's leases rather
+  than guessing. _Shipped: `inventory/dhcp_leases.py` (dnsmasq + ISC parsers, caching
+  `DHCPLeaseSource`); `DeviceTracker` consults it first and falls back to reverse DNS, recording
+  `extra.identity_source`; refreshed each poll. Gated on `monitoring.dhcp_leases_enabled`. Tests in
+  `test_dhcp_leases.py`._
 
 ---
 
