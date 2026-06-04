@@ -80,7 +80,10 @@ Move from detect-only to detect-and-respond. **Gate every action behind explicit
     fires. _Shipped: `responders/dns_sinkhole.py` — backends `hosts` (append `0.0.0.0 <domain>`,
     idempotent), `pihole` (`pihole -b`), `unbound` (`local_zone … always_nxdomain`); category/
     severity gating; never sinkholes a whitelisted domain. Tests in `test_dns_sinkhole.py`._
-  - **Kill switch:** disable a port or de-auth a Wi-Fi client (via router API / hostapd) on confirmed compromise.
+  - ✅ **Kill switch:** run an operator-supplied command on confirmed compromise (hostapd de-auth,
+    router API, switch-port ACL, …). _Shipped: `responders/killswitch.py` — generic command template
+    with `{ip}/{mac}/{related}/{category}/{severity}` placeholders; never fires without a configured
+    command + category; default gate CRITICAL. Tests in `test_killswitch.py`._
   - Every responder runs in **dry-run by default**, logs intended action, and requires per-action opt-in.
 - ✅ **Approval workflow.** Armed responders hold actions as PENDING for one-click confirmation
   instead of auto-firing. _Shipped: `ResponderManager` approval gating (`require_approval` +

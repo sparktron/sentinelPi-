@@ -229,6 +229,15 @@ class ResponseConfig:
     arp_restore_backend: str = "arp"            # "arp" | "ip"
     arp_restore_min_severity: str = "high"
 
+    # Kill switch: run an operator-supplied command on confirmed compromise
+    # (e.g. hostapd de-auth, router API, switch-port ACL). Placeholders in the
+    # command are substituted: {ip} {mac} {related} {category} {severity}.
+    # Empty command or categories => never fires. Default gate is CRITICAL only.
+    killswitch_enabled: bool = False
+    killswitch_command: List[str] = field(default_factory=list)
+    killswitch_categories: List[str] = field(default_factory=list)
+    killswitch_min_severity: str = "critical"
+
 
 @dataclass
 class Config:

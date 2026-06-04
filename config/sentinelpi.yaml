@@ -286,3 +286,11 @@ response:
   arp_restore_enabled: false
   arp_restore_backend: arp            # arp | ip
   arp_restore_min_severity: high
+
+  # Kill switch: run YOUR command on confirmed compromise (hostapd de-auth,
+  # router API, switch ACL, …). Placeholders: {ip} {mac} {related} {category}
+  # {severity}. Empty command/categories => never fires.
+  killswitch_enabled: false
+  killswitch_command: []              # e.g., ["/usr/local/bin/quarantine.sh", "{ip}", "{mac}"]
+  killswitch_categories: []           # e.g., ["honeypot", "threat_intel"]
+  killswitch_min_severity: critical
