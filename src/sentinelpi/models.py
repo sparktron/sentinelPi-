@@ -42,6 +42,7 @@ class AlertCategory(str, Enum):
     PROCESS_ANOMALY = "process_anomaly"
     THREAT_INTEL = "threat_intel"
     HONEYPOT = "honeypot"
+    INCIDENT = "incident"
     SYSTEM = "system"
 
 
