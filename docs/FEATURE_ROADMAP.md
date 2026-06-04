@@ -73,7 +73,10 @@ Move from detect-only to detect-and-respond. **Gate every action behind explicit
   Tests in `test_responders.py`._
   - ✅ **Quarantine** a host via `iptables`/`nftables` drop rules (outbound + inbound DROP).
   - **ARP-spoof defense:** pin gateway MAC and auto-restore the correct ARP entry on detected poisoning.
-  - **DNS sinkhole:** push a block to a local Pi-hole/Unbound via its API when a DGA/C2 domain fires.
+  - ✅ **DNS sinkhole:** block a malicious domain at the resolver when a DGA/C2/threat-intel domain
+    fires. _Shipped: `responders/dns_sinkhole.py` — backends `hosts` (append `0.0.0.0 <domain>`,
+    idempotent), `pihole` (`pihole -b`), `unbound` (`local_zone … always_nxdomain`); category/
+    severity gating; never sinkholes a whitelisted domain. Tests in `test_dns_sinkhole.py`._
   - **Kill switch:** disable a port or de-auth a Wi-Fi client (via router API / hostapd) on confirmed compromise.
   - Every responder runs in **dry-run by default**, logs intended action, and requires per-action opt-in.
 - ✅ **Approval workflow.** Armed responders hold actions as PENDING for one-click confirmation

@@ -211,6 +211,13 @@ class ResponseConfig:
     auto_block_min_severity: str = "high"
     block_duration_seconds: int = 3600          # 0 = permanent (until restart/manual)
 
+    # DNS sinkhole responder (domain-level block; per-action opt-in).
+    dns_sinkhole_enabled: bool = False
+    dns_sinkhole_backend: str = "hosts"         # "hosts" | "pihole" | "unbound"
+    dns_sinkhole_hosts_file: str = "/etc/sentinelpi/sinkhole.hosts"
+    sinkhole_categories: List[str] = field(default_factory=lambda: ["threat_intel", "dns_anomaly"])
+    sinkhole_min_severity: str = "high"
+
 
 @dataclass
 class Config:

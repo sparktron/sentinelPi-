@@ -265,3 +265,12 @@ response:
     - threat_intel
   auto_block_min_severity: high
   block_duration_seconds: 3600        # 0 = until restart / manual removal
+
+  # DNS sinkhole: block a malicious DOMAIN at the resolver.
+  dns_sinkhole_enabled: false
+  dns_sinkhole_backend: hosts         # hosts | pihole | unbound
+  dns_sinkhole_hosts_file: /etc/sentinelpi/sinkhole.hosts
+  sinkhole_categories:
+    - threat_intel
+    - dns_anomaly
+  sinkhole_min_severity: high
