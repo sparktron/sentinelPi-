@@ -89,8 +89,12 @@ Move from detect-only to detect-and-respond. **Gate every action behind explicit
   when responders are wired). `ResponderAction` gained id/status/lifecycle. Tests in
   `test_responders.py` + `test_response_api.py`. Follow-up: surface approve/reject in a notifier
   (Telegram/Slack button) and a dashboard UI panel._
-- **Honeypot / canary ports.** Open a few fake services; any connection to them is high-fidelity
-  evidence of internal scanning and auto-quarantines the source.
+- ✅ **Honeypot / canary ports.** Open a few fake services; any connection is high-fidelity
+  evidence of internal scanning. _Shipped: `capture/honeypot.py` — binds configured canary ports,
+  raises a HIGH `HONEYPOT` alert (new category) on any connect, skips unbindable ports. Gated by
+  `monitoring.honeypot_enabled`. Tests (incl. a real-socket integration) in `test_honeypot.py`.
+  Auto-quarantine of the (internal) source is a follow-up — it needs a gateway/switch-ACL path,
+  since the firewall responder deliberately won't DROP private IPs._
 
 ---
 

@@ -62,6 +62,7 @@ from .detectors.asn_detector import ASNReputationDetector
 from .detectors.threat_intel_detector import ThreatIntelDetector
 from .intel.threat_feeds import ThreatIntelService
 from .capture.packet_capture import PacketCapture
+from .capture.honeypot import HoneypotService
 from .utils.geo import init_geo
 from .utils.asn import init_asn
 
@@ -225,6 +226,7 @@ class SentinelPi:
         # Packet capture event queue and router
         self._capture_queue: queue.Queue = queue.Queue(maxsize=50_000)
         self._packet_capture: Optional[PacketCapture] = None
+        self._honeypot: Optional[HoneypotService] = None
 
         # Dashboard
         self._dashboard_server = None
@@ -412,6 +414,13 @@ class SentinelPi:
         self._threads.append(t)
         t.start()
 
+    def _start_honeypot(self) -> None:
+        """Open canary ports if enabled; hits flow straight to the alert manager."""
+        if not self.config.monitoring.honeypot_enabled:
+            return
+        self._honeypot = HoneypotService(self.config, on_alert=self._alert_manager.process_one)
+        self._honeypot.start()
+
     def _start_dashboard(self) -> None:
         """Start the web dashboard if enabled."""
         if not self.config.dashboard.enabled:
@@ -495,6 +504,7 @@ class SentinelPi:
         self._start_dashboard()
 
         self._start_threat_intel()
+        self._start_honeypot()
 
         # Emit a system startup alert
         from .models import Alert, AlertCategory, Severity
@@ -534,6 +544,9 @@ class SentinelPi:
         logger.info("Stopping packet capture...")
         if self._packet_capture:
             self._packet_capture.stop()
+
+        if self._honeypot:
+            self._honeypot.stop()
 
         logger.info("Waiting for threads to finish...")
         for t in self._threads:

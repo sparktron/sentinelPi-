@@ -154,6 +154,12 @@ class MonitoringConfig:
     # Packet capture (requires root/CAP_NET_RAW)
     packet_capture_enabled: bool = True
 
+    # Honeypot / canary ports: open fake services; any connection is high-fidelity
+    # evidence of internal scanning. Ports < 1024 need root to bind.
+    honeypot_enabled: bool = False
+    honeypot_bind_host: str = "0.0.0.0"
+    honeypot_ports: List[int] = field(default_factory=lambda: [23, 2323, 3389, 8081, 5555])
+
     # Sensitivity profile affects multiple thresholds
     # Options: conservative | balanced | aggressive
     sensitivity_profile: str = "balanced"

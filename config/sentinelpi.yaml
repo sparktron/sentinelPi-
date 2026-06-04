@@ -100,6 +100,12 @@ monitoring:
   # If disabled, proc polling is used (no root required, slightly less detail)
   packet_capture_enabled: true
 
+  # Honeypot / canary ports: open fake services; ANY connection is high-fidelity
+  # evidence of internal scanning -> HIGH alert. Ports < 1024 need root to bind.
+  honeypot_enabled: false
+  honeypot_bind_host: 0.0.0.0
+  honeypot_ports: [23, 2323, 3389, 8081, 5555]
+
   # Quiet hours: suppress non-critical alerts between these hours (24h format)
   quiet_hours_enabled: false
   quiet_hours_start: 23   # 11 PM
