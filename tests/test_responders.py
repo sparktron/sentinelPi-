@@ -38,10 +38,11 @@ class _RecordingRunner:
         return self._code, self._output
 
 
-def _arm(config, *, enabled, dry_run, fw=True):
+def _arm(config, *, enabled, dry_run, fw=True, require_approval=False):
     config.response.enabled = enabled
     config.response.dry_run = dry_run
     config.response.firewall_block_enabled = fw
+    config.response.require_approval = require_approval
 
 
 # --------------------------------------------------------------- gating (core)
@@ -158,6 +159,70 @@ def test_recent_actions_are_tracked(config):
     mgr.add_responder(FirewallResponder(config, runner=_RecordingRunner()))
     mgr.handle(_threat_alert())
     assert len(mgr.recent_actions()) == 1
+
+
+# --------------------------------------------------------------- approval flow
+def test_armed_with_approval_queues_pending_not_executed(config):
+    from sentinelpi.responders.base import PENDING
+    _arm(config, enabled=True, dry_run=False, require_approval=True)
+    runner = _RecordingRunner()
+    mgr = ResponderManager(config)
+    mgr.add_responder(FirewallResponder(config, runner=runner))
+
+    actions = mgr.handle(_threat_alert())
+    assert len(actions) == 1
+    assert actions[0].status == PENDING
+    assert runner.calls == []  # nothing executed yet
+    assert len(mgr.pending_actions()) == 1
+
+
+def test_approve_executes_pending_action(config):
+    from sentinelpi.responders.base import EXECUTED
+    _arm(config, enabled=True, dry_run=False, require_approval=True)
+    runner = _RecordingRunner()
+    mgr = ResponderManager(config)
+    mgr.add_responder(FirewallResponder(config, runner=runner))
+
+    action = mgr.handle(_threat_alert())[0]
+    approved = mgr.approve(action.action_id)
+    assert approved.status == EXECUTED and approved.success is True
+    assert runner.calls  # now it ran
+    assert mgr.pending_actions() == []  # cleared from the queue
+
+
+def test_reject_discards_pending_action(config):
+    from sentinelpi.responders.base import REJECTED
+    _arm(config, enabled=True, dry_run=False, require_approval=True)
+    runner = _RecordingRunner()
+    mgr = ResponderManager(config)
+    mgr.add_responder(FirewallResponder(config, runner=runner))
+
+    action = mgr.handle(_threat_alert())[0]
+    rejected = mgr.reject(action.action_id)
+    assert rejected.status == REJECTED
+    assert runner.calls == []  # never executed
+    assert mgr.pending_actions() == []
+
+
+def test_auto_execute_category_bypasses_approval(config):
+    from sentinelpi.responders.base import EXECUTED
+    _arm(config, enabled=True, dry_run=False, require_approval=True)
+    config.response.auto_execute_categories = ["threat_intel"]  # trust this category
+    runner = _RecordingRunner()
+    mgr = ResponderManager(config)
+    mgr.add_responder(FirewallResponder(config, runner=runner))
+
+    action = mgr.handle(_threat_alert())[0]
+    assert action.status == EXECUTED
+    assert runner.calls  # fired without approval
+    assert mgr.pending_actions() == []
+
+
+def test_approve_unknown_id_returns_none(config):
+    _arm(config, enabled=True, dry_run=False, require_approval=True)
+    mgr = ResponderManager(config)
+    assert mgr.approve("nope") is None
+    assert mgr.reject("nope") is None
 
 
 # --------------------------------------------------------------- manager wiring

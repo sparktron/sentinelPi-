@@ -76,9 +76,13 @@ Move from detect-only to detect-and-respond. **Gate every action behind explicit
   - **DNS sinkhole:** push a block to a local Pi-hole/Unbound via its API when a DGA/C2 domain fires.
   - **Kill switch:** disable a port or de-auth a Wi-Fi client (via router API / hostapd) on confirmed compromise.
   - Every responder runs in **dry-run by default**, logs intended action, and requires per-action opt-in.
-- **Approval workflow.** HIGH/CRITICAL responses can require one-click confirmation from the
-  dashboard or a notifier (e.g. a Telegram/Slack button) before executing — auto-execute only for
-  the categories the user explicitly trusts.
+- ✅ **Approval workflow.** Armed responders hold actions as PENDING for one-click confirmation
+  instead of auto-firing. _Shipped: `ResponderManager` approval gating (`require_approval` +
+  `auto_execute_categories` trust list) with a pending registry and `approve()`/`reject()`;
+  dashboard `/api/responses/{pending,recent,<id>/approve,<id>/reject}` (auth-gated, only present
+  when responders are wired). `ResponderAction` gained id/status/lifecycle. Tests in
+  `test_responders.py` + `test_response_api.py`. Follow-up: surface approve/reject in a notifier
+  (Telegram/Slack button) and a dashboard UI panel._
 - **Honeypot / canary ports.** Open a few fake services; any connection to them is high-fidelity
   evidence of internal scanning and auto-quarantines the source.
 

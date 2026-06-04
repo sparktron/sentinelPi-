@@ -422,6 +422,7 @@ class SentinelPi:
             device_tracker=self._device_tracker,
             baseline=self._baseline,
             alert_manager=self._alert_manager,
+            responder_manager=self._responder_manager,
         )
         self._dashboard_server = DashboardServer(app, self.config)
         self._dashboard_server.start()

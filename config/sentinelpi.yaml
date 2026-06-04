@@ -250,6 +250,12 @@ response:
   enabled: false          # master switch — nothing runs unless true
   dry_run: true           # even when enabled, only log intended actions
 
+  # Human-in-the-loop. When armed (enabled & not dry_run), actions are held for
+  # one-click approval on the dashboard (/api/responses/pending) UNLESS the
+  # alert's category is in auto_execute_categories. Default: approve by hand.
+  require_approval: true
+  auto_execute_categories: []   # e.g., ["threat_intel"] to auto-fire known-bad
+
   # Firewall quarantine: insert iptables/nftables DROP rules for a malicious IP.
   firewall_block_enabled: false
   firewall_backend: iptables          # iptables | nftables

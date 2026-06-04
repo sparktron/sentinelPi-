@@ -197,6 +197,12 @@ class ResponseConfig:
     enabled: bool = False        # master switch — no responder runs unless true
     dry_run: bool = True         # even when enabled, only log intended actions
 
+    # Human-in-the-loop: when armed (enabled & not dry_run), actions are held as
+    # PENDING for one-click approval, EXCEPT for categories the user explicitly
+    # trusts to auto-execute. Default: approve everything by hand.
+    require_approval: bool = True
+    auto_execute_categories: List[str] = field(default_factory=list)
+
     # Firewall-block responder (per-action opt-in).
     firewall_block_enabled: bool = False
     firewall_backend: str = "iptables"          # "iptables" | "nftables"

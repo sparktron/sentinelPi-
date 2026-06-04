@@ -90,6 +90,7 @@ def create_app(
     device_tracker: "DeviceTracker",
     baseline: "BaselineEngine",
     alert_manager: "AlertManager",
+    responder_manager=None,
 ) -> Optional["Flask"]:
     """
     Create and configure the Flask application.
@@ -212,6 +213,36 @@ def create_app(
         ok = alert_manager.mute_alert(alert_id)
         return jsonify({"ok": ok})
 
+    # ------------------------------------------------------------------
+    # Active-response endpoints (only present when a responder manager is wired)
+    # ------------------------------------------------------------------
+    if responder_manager is not None:
+        @app.route("/api/responses/pending")
+        @require_token
+        def api_responses_pending():
+            return jsonify([_action_to_dict(a) for a in responder_manager.pending_actions()])
+
+        @app.route("/api/responses/recent")
+        @require_token
+        def api_responses_recent():
+            return jsonify([_action_to_dict(a) for a in responder_manager.recent_actions()])
+
+        @app.route("/api/responses/<action_id>/approve", methods=["POST"])
+        @require_token
+        def api_responses_approve(action_id: str):
+            action = responder_manager.approve(action_id)
+            if action is None:
+                abort(404)
+            return jsonify(_action_to_dict(action))
+
+        @app.route("/api/responses/<action_id>/reject", methods=["POST"])
+        @require_token
+        def api_responses_reject(action_id: str):
+            action = responder_manager.reject(action_id)
+            if action is None:
+                abort(404)
+            return jsonify(_action_to_dict(action))
+
     @app.route("/api/devices")
     @require_token
     def api_devices():
@@ -276,6 +307,23 @@ def _alert_to_dict(alert) -> dict:
         "confidence": round(alert.confidence, 3),
         "status": alert.status.value,
         "enrichment": alert.extra.get("enrichment"),
+    }
+
+
+def _action_to_dict(action) -> dict:
+    return {
+        "action_id": action.action_id,
+        "responder": action.responder,
+        "target": action.target,
+        "description": action.description,
+        "commands": [" ".join(c) for c in action.commands],
+        "status": action.status,
+        "dry_run": action.dry_run,
+        "executed": action.executed,
+        "success": action.success,
+        "error": action.error,
+        "alert_id": action.alert_id,
+        "created_at": action.created_at.isoformat(),
     }
 
 

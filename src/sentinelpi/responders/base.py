@@ -15,11 +15,27 @@ A Responder mirrors a Notifier, but instead of telling someone about an alert it
 
 from __future__ import annotations
 
+import uuid
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
+from datetime import datetime
 from typing import List, Optional
 
 from ..models import Alert
+from ..utils import clock
+
+
+# Lifecycle of an action:
+#   planned   - dry-run only, never executes
+#   pending   - armed but awaiting human approval
+#   executed  - ran successfully
+#   failed    - ran but errored
+#   rejected  - a human declined it
+PLANNED = "planned"
+PENDING = "pending"
+EXECUTED = "executed"
+FAILED = "failed"
+REJECTED = "rejected"
 
 
 @dataclass
@@ -29,10 +45,14 @@ class ResponderAction:
     target: str                  # what it acts on (e.g. an IP)
     description: str             # human summary of the intended action
     commands: List[List[str]] = field(default_factory=list)  # argv(s) that would run, if any
+    action_id: str = field(default_factory=lambda: str(uuid.uuid4()))
+    created_at: datetime = field(default_factory=clock.now)
+    status: str = PLANNED        # see lifecycle constants above
     dry_run: bool = True         # was this only planned, not executed?
     executed: bool = False       # did execute() actually run?
     success: bool = False        # did execution succeed?
     error: str = ""              # error message if execution failed
+    alert_id: str = ""           # the alert that triggered this action
 
 
 class BaseResponder(ABC):
