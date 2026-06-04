@@ -243,6 +243,32 @@ def create_app(
                 abort(404)
             return jsonify(_action_to_dict(action))
 
+    # ------------------------------------------------------------------
+    # Collector ingest (Phase 3) — accepts alerts forwarded by sensors.
+    # Authenticated with the shared cluster key (NOT the dashboard token), so
+    # sensors don't need a dashboard login. Active only when a key is configured.
+    # ------------------------------------------------------------------
+    if config.cluster.collector_key:
+        @app.route("/api/ingest", methods=["POST"])
+        def api_ingest():
+            from ..models import alert_from_dict
+
+            provided = request.headers.get("X-SentinelPi-Collector-Key", "")
+            if not hmac.compare_digest(provided, config.cluster.collector_key):
+                abort(401)
+
+            body = request.get_json(silent=True) or {}
+            alert_data = body.get("alert")
+            if not isinstance(alert_data, dict):
+                return jsonify({"error": "missing 'alert' object"}), 400
+
+            alert = alert_from_dict(alert_data)
+            # Tag with the originating sensor so the collector can tell remote
+            # alerts apart (and ForwardNotifier won't bounce them onward).
+            alert.extra["sensor"] = str(body.get("sensor_id", "") or "unknown")
+            fired = alert_manager.process_one(alert)
+            return jsonify({"ok": True, "fired": fired, "alert_id": alert.alert_id})
+
     @app.route("/api/devices")
     @require_token
     def api_devices():

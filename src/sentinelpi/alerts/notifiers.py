@@ -286,3 +286,54 @@ class WebhookNotifier(BaseNotifier):
             logger.debug("Webhook delivered for: %s", alert.title)
         except Exception as exc:
             logger.error("Webhook delivery failed: %s", exc)
+
+
+class ForwardNotifier(BaseNotifier):
+    """
+    Sensor-side notifier: forwards alerts to a central collector's ingest
+    endpoint (Phase 3). Mirrors WebhookNotifier's async queue + worker, but
+    targets a SentinelPi collector and authenticates with the shared cluster
+    key. Never forwards an alert that already carries a 'sensor' tag (it came
+    from another sensor), so collectors can't bounce events around.
+    """
+
+    def __init__(self, config: Config) -> None:
+        self._cluster = config.cluster
+        self._min_severity = Severity(self._cluster.forward_min_severity)
+        import queue as q_module
+        self._queue: "q_module.Queue[Alert]" = q_module.Queue(maxsize=500)
+        self._thread = threading.Thread(target=self._worker, daemon=True, name="ForwardNotifier")
+        self._thread.start()
+
+    def send(self, alert: Alert) -> None:
+        if not self._cluster.collector_url:
+            return
+        if alert.severity < self._min_severity:
+            return
+        if alert.extra.get("sensor"):
+            return  # don't re-forward a remote alert
+        try:
+            self._queue.put_nowait(alert)
+        except Exception:
+            logger.warning("Forward queue full — dropping forwarded alert.")
+
+    def _worker(self) -> None:
+        while True:
+            try:
+                alert = self._queue.get(timeout=5.0)
+            except queue.Empty:
+                continue
+            try:
+                self._forward(alert)
+            except Exception as exc:
+                logger.warning("Alert forwarding failed: %s", exc)
+
+    def _forward(self, alert: Alert) -> None:
+        import requests
+        payload = {"sensor_id": self._cluster.sensor_id, "alert": self._alert_to_dict(alert)}
+        headers = {"Content-Type": "application/json"}
+        if self._cluster.collector_key:
+            headers["X-SentinelPi-Collector-Key"] = self._cluster.collector_key
+        resp = requests.post(self._cluster.collector_url, json=payload, headers=headers, timeout=10)
+        resp.raise_for_status()
+        logger.debug("Forwarded alert to collector: %s", alert.title)
