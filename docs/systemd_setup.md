@@ -110,6 +110,57 @@ The service file includes systemd security features:
 - `SystemCallFilter=@system-service` — Restricted system calls
 - `ReadWritePaths=` — Only `/var/lib/sentinelpi` and `/var/log/sentinelpi` are writable
 
+## mTLS for the sensor → collector link (Phase 3)
+
+In a multi-host deployment, sensors forward alerts to a collector's
+`/api/ingest`, authenticated with the shared `cluster.collector_key`. For
+mutual TLS, terminate client-cert verification at a reverse proxy in front of
+the collector (the bundled waitress server does not do client-cert auth itself).
+
+**Sensor side** — present a client cert and verify the collector:
+
+```yaml
+cluster:
+  role: sensor
+  collector_url: "https://collector.lan/api/ingest"
+  collector_key: "<shared-secret>"
+  tls_client_cert: /etc/sentinelpi/sensor.crt
+  tls_client_key:  /etc/sentinelpi/sensor.key
+  tls_ca_cert:     /etc/sentinelpi/ca.crt   # verifies the collector's cert
+```
+
+**Collector side** — require the proxy to have verified the client cert:
+
+```yaml
+cluster:
+  collector_key: "<shared-secret>"
+  ingest_require_verified_header: true   # demands X-SentinelPi-Client-Verified: SUCCESS
+```
+
+**nginx** terminating mTLS and forwarding to the local collector (waitress on
+`127.0.0.1:8888`):
+
+```nginx
+server {
+    listen 443 ssl;
+    server_name collector.lan;
+
+    ssl_certificate     /etc/sentinelpi/collector.crt;
+    ssl_certificate_key /etc/sentinelpi/collector.key;
+    ssl_client_certificate /etc/sentinelpi/ca.crt;
+    ssl_verify_client on;                 # reject clients without a valid cert
+
+    location /api/ingest {
+        proxy_pass http://127.0.0.1:8888;
+        proxy_set_header X-SentinelPi-Client-Verified $ssl_client_verify;
+    }
+}
+```
+
+With `ingest_require_verified_header: true`, the collector rejects (403) any
+request the proxy didn't mark `SUCCESS`, so the shared key alone can't be
+replayed without a valid client certificate.
+
 ## Troubleshooting
 
 ### Service won't start

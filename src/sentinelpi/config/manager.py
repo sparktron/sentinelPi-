@@ -274,6 +274,18 @@ class ClusterConfig:
     collector_key: str = ""           # shared secret (sensor sends; collector requires)
     forward_min_severity: str = "low"
 
+    # --- mTLS (optional, layered on top of the shared key) ---
+    # Sensor side: present a client certificate and verify the collector's cert.
+    # Terminate mTLS at a reverse proxy in front of the collector (waitress
+    # doesn't do client-cert auth itself); see docs/systemd_setup.md.
+    tls_client_cert: str = ""         # path to client cert (PEM); may include the key
+    tls_client_key: str = ""          # path to client key (PEM); omit if in the cert
+    tls_ca_cert: str = ""             # CA bundle used to verify the collector's cert
+    tls_verify: bool = True           # set False only for throwaway/self-signed testing
+    # Collector side: require the fronting proxy to have verified the client cert
+    # (proxy sets X-SentinelPi-Client-Verified: SUCCESS from $ssl_client_verify).
+    ingest_require_verified_header: bool = False
+
 
 @dataclass
 class CorrelationConfig:

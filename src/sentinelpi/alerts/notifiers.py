@@ -334,6 +334,27 @@ class ForwardNotifier(BaseNotifier):
         headers = {"Content-Type": "application/json"}
         if self._cluster.collector_key:
             headers["X-SentinelPi-Collector-Key"] = self._cluster.collector_key
-        resp = requests.post(self._cluster.collector_url, json=payload, headers=headers, timeout=10)
+        resp = requests.post(
+            self._cluster.collector_url,
+            json=payload,
+            headers=headers,
+            timeout=10,
+            **self._tls_kwargs(),
+        )
         resp.raise_for_status()
         logger.debug("Forwarded alert to collector: %s", alert.title)
+
+    def _tls_kwargs(self) -> dict:
+        """
+        Build requests' TLS args from cluster config. ``verify`` becomes the CA
+        bundle path when set (so the collector's cert is checked against it),
+        otherwise the boolean tls_verify. ``cert`` enables mutual TLS by
+        presenting the sensor's client certificate.
+        """
+        kwargs: dict = {"verify": self._cluster.tls_ca_cert or self._cluster.tls_verify}
+        if self._cluster.tls_client_cert:
+            if self._cluster.tls_client_key:
+                kwargs["cert"] = (self._cluster.tls_client_cert, self._cluster.tls_client_key)
+            else:
+                kwargs["cert"] = self._cluster.tls_client_cert
+        return kwargs

@@ -269,6 +269,14 @@ def create_app(
         def api_ingest():
             from ..models import alert_from_dict
 
+            # Optional mTLS: a fronting reverse proxy verifies the sensor's client
+            # certificate and sets this header from $ssl_client_verify. Defense in
+            # depth on top of the shared key (see docs/systemd_setup.md).
+            if config.cluster.ingest_require_verified_header:
+                verified = request.headers.get("X-SentinelPi-Client-Verified", "")
+                if verified != "SUCCESS":
+                    abort(403)
+
             provided = request.headers.get("X-SentinelPi-Collector-Key", "")
             if not hmac.compare_digest(provided, config.cluster.collector_key):
                 abort(401)

@@ -324,6 +324,13 @@ cluster:
   collector_url: ""           # sensor: https://collector-host:8888/api/ingest
   collector_key: ""           # shared secret: sensor sends it; collector requires it
   forward_min_severity: low   # sensor: only forward alerts at/above this severity
+  # Optional mTLS, layered on top of the shared key. Terminate client-cert auth
+  # at a reverse proxy in front of the collector (see docs/systemd_setup.md).
+  tls_client_cert: ""         # sensor: client cert PEM (may include the key)
+  tls_client_key: ""          # sensor: client key PEM (omit if in the cert)
+  tls_ca_cert: ""             # sensor: CA bundle to verify the collector's cert
+  tls_verify: true            # sensor: set false only for self-signed testing
+  ingest_require_verified_header: false  # collector: require proxy-verified client cert
 
 # =============================================================================
 # CORRELATION  (Phase 3 — turn alert noise into incidents)

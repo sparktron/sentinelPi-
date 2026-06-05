@@ -56,8 +56,8 @@ def test_forward_notifier_posts_payload(config, monkeypatch):
     class _Resp:
         def raise_for_status(self): pass
 
-    def fake_post(url, json=None, headers=None, timeout=None):
-        posted.update(url=url, json=json, headers=headers)
+    def fake_post(url, json=None, headers=None, timeout=None, **kwargs):
+        posted.update(url=url, json=json, headers=headers, kwargs=kwargs)
         return _Resp()
 
     import requests
@@ -70,6 +70,36 @@ def test_forward_notifier_posts_payload(config, monkeypatch):
     assert posted["headers"]["X-SentinelPi-Collector-Key"] == "secret"
     assert posted["json"]["sensor_id"] == "pi-livingroom"
     assert posted["json"]["alert"]["affected_host"] == "192.168.1.50"
+    # Default TLS: verify on (True), no client cert presented.
+    assert posted["kwargs"]["verify"] is True
+    assert "cert" not in posted["kwargs"]
+
+
+def test_forward_notifier_mtls_kwargs(config, monkeypatch):
+    from sentinelpi.alerts import notifiers as N
+
+    config.cluster.collector_url = "https://collector:8888/api/ingest"
+    config.cluster.collector_key = "secret"
+    config.cluster.tls_ca_cert = "/etc/sentinelpi/ca.pem"
+    config.cluster.tls_client_cert = "/etc/sentinelpi/client.pem"
+    config.cluster.tls_client_key = "/etc/sentinelpi/client.key"
+
+    posted = {}
+
+    class _Resp:
+        def raise_for_status(self): pass
+
+    def fake_post(url, json=None, headers=None, timeout=None, **kwargs):
+        posted.update(kwargs=kwargs)
+        return _Resp()
+
+    import requests
+    monkeypatch.setattr(requests, "post", fake_post)
+
+    N.ForwardNotifier(config)._forward(_alert())
+    # CA bundle becomes verify=; client cert/key become a cert tuple (mutual TLS).
+    assert posted["kwargs"]["verify"] == "/etc/sentinelpi/ca.pem"
+    assert posted["kwargs"]["cert"] == ("/etc/sentinelpi/client.pem", "/etc/sentinelpi/client.key")
 
 
 def test_forward_notifier_skips_remote_and_low(config):
@@ -149,3 +179,38 @@ def test_ingest_absent_without_collector_key(config, db, device_tracker, baselin
     app = create_app(config, db, device_tracker, baseline, alert_manager)
     app.config.update(TESTING=True)
     assert app.test_client().post("/api/ingest", json=_payload()).status_code == 404
+
+
+# ----------------------------------------------------------- mTLS verified header
+@pytest.fixture
+def mtls_collector(config, db, device_tracker, baseline, alert_manager):
+    from sentinelpi.ui.dashboard import FLASK_AVAILABLE, create_app
+    if not FLASK_AVAILABLE:
+        pytest.skip("Flask not installed")
+    config.dashboard.access_token = ""
+    config.cluster.collector_key = "shared-key"
+    config.cluster.ingest_require_verified_header = True
+    app = create_app(config, db, device_tracker, baseline, alert_manager)
+    app.config.update(TESTING=True)
+    return app.test_client()
+
+
+def test_ingest_requires_verified_header_when_enabled(mtls_collector):
+    # Right key but no proxy-verified header -> 403 (before the key check).
+    resp = mtls_collector.post(
+        "/api/ingest", json=_payload(),
+        headers={"X-SentinelPi-Collector-Key": "shared-key"},
+    )
+    assert resp.status_code == 403
+
+
+def test_ingest_accepts_verified_header(mtls_collector):
+    resp = mtls_collector.post(
+        "/api/ingest", json=_payload(),
+        headers={
+            "X-SentinelPi-Collector-Key": "shared-key",
+            "X-SentinelPi-Client-Verified": "SUCCESS",
+        },
+    )
+    assert resp.status_code == 200
+    assert resp.get_json()["fired"] is True
