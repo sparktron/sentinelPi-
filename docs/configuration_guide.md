@@ -131,6 +131,61 @@ notifications:
   email_min_severity: high
 ```
 
+## Whole-Network Coverage (Phase 3)
+
+By default SentinelPi sees its own host plus whatever the LAN segment lets it
+sniff. To watch the *whole* network, use one or more of these.
+
+### Span/mirror-port mode
+
+Plug the capture interface into a switch **SPAN/mirror port** that receives a
+copy of all subnet traffic, then enable mirror mode:
+
+```yaml
+network:
+  interfaces: [eth0]      # the NIC cabled to the mirror port
+  mirror_mode: true       # forces promiscuous capture of other hosts' unicast
+```
+
+Switch setup (varies by vendor):
+
+- **Managed switch (generic):** configure a *port mirroring* / *SPAN* session
+  with the uplink (or the ports you care about) as the **source** and the Pi's
+  port as the **destination/monitor** port.
+- **Cisco:** `monitor session 1 source interface Gi0/1` then
+  `monitor session 1 destination interface Gi0/24`.
+- **MikroTik/UniFi/etc.:** enable the "mirror"/"port isolation monitor" feature
+  and point it at the Pi's port.
+
+Mirror mode only makes capture promiscuous (required to see unicast between
+*other* hosts). A dedicated capture NIC is recommended so the mirror flood
+doesn't compete with the Pi's normal traffic.
+
+### Flow ingestion (router/firewall)
+
+See connections that never cross the Pi's segment by ingesting flow data from
+the gateway. All sources are off by default and feed the same detectors as
+packet capture.
+
+```yaml
+flow:
+  # Linux conntrack (best when the Pi is the gateway/router)
+  conntrack_enabled: false
+  conntrack_interval_seconds: 10
+  conntrack_command: conntrack          # falls back to /proc/net/nf_conntrack
+
+  # NetFlow v5/v9/IPFIX — point your router/switch exporter at this host:port
+  netflow_enabled: false
+  netflow_bind_host: "0.0.0.0"
+  netflow_port: 2055
+
+  # pfSense/OPNsense filterlog — forward the firewall's syslog to the Pi and
+  # write it to a file (rsyslog), then point filterlog_path at that file
+  filterlog_enabled: false
+  filterlog_path: /var/log/filter.log
+  filterlog_interval_seconds: 5
+```
+
 ## Whitelisting
 
 Suppress alerts for known-good traffic:

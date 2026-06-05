@@ -178,6 +178,7 @@ def create_app(
         severity = request.args.get("severity")
         status = request.args.get("status")
         host = request.args.get("host")
+        sensor = request.args.get("sensor")
 
         try:
             sev_filter = Severity(severity) if severity else None
@@ -197,9 +198,24 @@ def create_app(
             severity=sev_filter,
             status=status_filter,
             host=host,
+            sensor=sensor,
         )
 
         return jsonify([_alert_to_dict(a) for a in alerts])
+
+    @app.route("/api/sensors")
+    @require_token
+    def api_sensors():
+        """
+        List the sensors that have reported alerts, with counts (multi-host
+        per-sensor view). Locally-raised alerts appear under the id "local".
+        """
+        try:
+            hours = _bounded_int(request.args.get("hours"), default=24, lo=1, hi=24 * 90)
+        except ValueError as exc:
+            return jsonify({"error": f"Invalid query parameter: {exc}"}), 400
+        since = clock.now() - timedelta(hours=hours)
+        return jsonify(db.get_sensors(since=since))
 
     @app.route("/api/alerts/<alert_id>/acknowledge", methods=["POST"])
     @require_token
@@ -252,6 +268,14 @@ def create_app(
         @app.route("/api/ingest", methods=["POST"])
         def api_ingest():
             from ..models import alert_from_dict
+
+            # Optional mTLS: a fronting reverse proxy verifies the sensor's client
+            # certificate and sets this header from $ssl_client_verify. Defense in
+            # depth on top of the shared key (see docs/systemd_setup.md).
+            if config.cluster.ingest_require_verified_header:
+                verified = request.headers.get("X-SentinelPi-Client-Verified", "")
+                if verified != "SUCCESS":
+                    abort(403)
 
             provided = request.headers.get("X-SentinelPi-Collector-Key", "")
             if not hmac.compare_digest(provided, config.cluster.collector_key):
@@ -333,6 +357,7 @@ def _alert_to_dict(alert) -> dict:
         "confidence": round(alert.confidence, 3),
         "status": alert.status.value,
         "enrichment": alert.extra.get("enrichment"),
+        "sensor": alert.extra.get("sensor", "local"),
     }
 
 

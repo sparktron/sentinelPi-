@@ -32,6 +32,11 @@ class NetworkConfig:
     subnets: List[str] = field(default_factory=lambda: ["192.168.1.0/24"])
     gateway_ip: str = ""
     gateway_mac: str = ""
+    # Switch SPAN/mirror-port mode: the capture interface is fed a copy of all
+    # subnet traffic, not just this host's. Forces promiscuous capture so other
+    # hosts' unicast is seen. (Capture is promiscuous by default; this makes the
+    # intent explicit and surfaces it in the startup log.)
+    mirror_mode: bool = False
 
 
 @dataclass
@@ -269,6 +274,18 @@ class ClusterConfig:
     collector_key: str = ""           # shared secret (sensor sends; collector requires)
     forward_min_severity: str = "low"
 
+    # --- mTLS (optional, layered on top of the shared key) ---
+    # Sensor side: present a client certificate and verify the collector's cert.
+    # Terminate mTLS at a reverse proxy in front of the collector (waitress
+    # doesn't do client-cert auth itself); see docs/systemd_setup.md.
+    tls_client_cert: str = ""         # path to client cert (PEM); may include the key
+    tls_client_key: str = ""          # path to client key (PEM); omit if in the cert
+    tls_ca_cert: str = ""             # CA bundle used to verify the collector's cert
+    tls_verify: bool = True           # set False only for throwaway/self-signed testing
+    # Collector side: require the fronting proxy to have verified the client cert
+    # (proxy sets X-SentinelPi-Client-Verified: SUCCESS from $ssl_client_verify).
+    ingest_require_verified_header: bool = False
+
 
 @dataclass
 class CorrelationConfig:
@@ -282,6 +299,31 @@ class CorrelationConfig:
     min_sensors: int = 2        # actor seen by >= this many sensors -> incident
     min_targets: int = 5        # OR actor hit >= this many distinct targets -> incident
     cooldown_seconds: int = 600
+
+
+@dataclass
+class FlowIngestConfig:
+    """
+    Router/firewall flow ingestion (Phase 3). Lets SentinelPi see connections
+    that never cross the Pi's own segment by ingesting flow data from the
+    gateway instead of (or alongside) passive packet capture. All sources are
+    off by default; each emits the same CapturedConnection events the
+    packet-capture pipeline produces, so every connection detector works on
+    them unchanged.
+    """
+    # Linux conntrack table polling (Pi-as-gateway, or any host worth tracking).
+    conntrack_enabled: bool = False
+    conntrack_interval_seconds: int = 10
+    conntrack_command: str = "conntrack"   # falls back to /proc/net/nf_conntrack
+    # NetFlow / IPFIX UDP collector for router/managed-switch flow exports.
+    netflow_enabled: bool = False
+    netflow_bind_host: str = "0.0.0.0"
+    netflow_port: int = 2055
+    # pfSense/OPNsense filterlog tailing (point at a file the Pi can read —
+    # usually the firewall's syslog forwarded to and written by the Pi's rsyslog).
+    filterlog_enabled: bool = False
+    filterlog_path: str = "/var/log/filter.log"
+    filterlog_interval_seconds: int = 5
 
 
 @dataclass
@@ -300,6 +342,7 @@ class Config:
     response: ResponseConfig = field(default_factory=ResponseConfig)
     cluster: ClusterConfig = field(default_factory=ClusterConfig)
     correlation: CorrelationConfig = field(default_factory=CorrelationConfig)
+    flow: FlowIngestConfig = field(default_factory=FlowIngestConfig)
 
     # Domains/IPs/ports to never alert on
     whitelist_domains: List[str] = field(default_factory=list)

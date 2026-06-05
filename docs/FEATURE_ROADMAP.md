@@ -114,11 +114,35 @@ Today SentinelPi sees its own host + the LAN it can sniff. To protect *the netwo
     `min_targets` targets raises one escalated INCIDENT alert (HIGH/CRITICAL). Wired into the
     AlertManager (only sees alerts that actually fire; INCIDENTs never re-correlate). Gated on
     `correlation.enabled`. Tests in `test_correlator.py`._
-  _Follow-ups: mTLS, and per-sensor views in the dashboard._
-- **Router/firewall integration.** Ingest flow data (NetFlow/IPFIX, `conntrack`, or pfSense/OPNsense
-  logs) so you see traffic that never crosses the Pi's segment.
-- **Span/mirror-port mode.** Document and support capture from a switch mirror port to monitor the
-  whole subnet, not just broadcast/local traffic.
+  - ✅ **Per-sensor dashboard views.** _Shipped: schema-v6 `alerts.sensor` column (populated from
+    `extra.sensor` at save time, indexed); `Database.get_sensors()` aggregates reporters with
+    counts; `get_recent_alerts(sensor=…)` filters (with `"local"` selecting locally-raised alerts);
+    dashboard `GET /api/sensors` + a `?sensor=` filter on `/api/alerts`, and a `sensor` field on the
+    alert API. Tests in `test_per_sensor.py`._
+  - ✅ **mTLS (sensor ↔ collector).** _Shipped: `ForwardNotifier` presents a client cert and verifies
+    the collector via `tls_client_cert`/`tls_client_key`/`tls_ca_cert`/`tls_verify`; the collector's
+    `/api/ingest` can require a reverse-proxy-verified client cert
+    (`cluster.ingest_require_verified_header` → `X-SentinelPi-Client-Verified: SUCCESS`), layered on
+    top of the shared key. Terminate client-cert auth at a proxy (waitress doesn't); see
+    `docs/systemd_setup.md`. Tests in `test_cluster.py`._
+- ✅ **Router/firewall integration.** Ingest flow data so you see traffic that never crosses the
+  Pi's segment. _Shipped: `capture/flow_ingest.py` — `ConntrackFlowSource` (polls `conntrack -L`,
+  falls back to `/proc/net/nf_conntrack`, diffs snapshots to emit each NEW flow once, primes on
+  first poll to avoid a startup storm) and `NetFlowCollector` (UDP listener parsing NetFlow v5 +
+  v9 + IPFIX, with per-exporter template caching). Both normalize to the existing
+  `CapturedConnection` events and feed the shared capture queue, so every connection detector
+  works on them unchanged. The event router now starts for packet capture OR flow ingest. Gated on
+  `flow.conntrack_enabled` / `flow.netflow_enabled` (both default off). Tests in
+  `test_flow_ingest.py`._
+  - ✅ **pfSense/OPNsense filterlog.** _Shipped: `FilterlogSource` tails a filterlog file (point it at
+    the firewall's syslog forwarded to the Pi), parsing the IPv4/IPv6 CSV (pass + block) into
+    `CapturedConnection` events; follows rotation/truncation, starts at EOF. Gated on
+    `flow.filterlog_enabled`._
+- ✅ **Span/mirror-port mode.** Capture from a switch SPAN/mirror port to monitor the whole subnet,
+  not just broadcast/local traffic. _Shipped: `network.mirror_mode` flag; capture is explicitly
+  promiscuous (`PacketCapture(promisc=…)`, passed to the scapy sniffer) so other hosts' unicast is
+  seen, with a clear startup log. Switch setup documented in `docs/configuration_guide.md`. Tests in
+  `test_capture_modes.py`._
 - ✅ **DHCP + device-identity source of truth.** Name devices from the DHCP server's leases rather
   than guessing. _Shipped: `inventory/dhcp_leases.py` (dnsmasq + ISC parsers, caching
   `DHCPLeaseSource`); `DeviceTracker` consults it first and falls back to reverse DNS, recording

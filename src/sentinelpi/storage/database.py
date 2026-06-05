@@ -28,7 +28,7 @@ from ..models import Alert, AlertStatus, Device, Severity, AlertCategory
 logger = logging.getLogger(__name__)
 
 # Current schema version — bump when adding migrations
-SCHEMA_VERSION = 5
+SCHEMA_VERSION = 6
 
 # Thread-local storage for per-thread SQLite connections
 _thread_local = threading.local()
@@ -124,6 +124,8 @@ class Database:
             self._migrate_v4(conn)
         if current_version < 5:
             self._migrate_v5(conn)
+        if current_version < 6:
+            self._migrate_v6(conn)
 
         conn.execute("DELETE FROM schema_version")
         conn.execute("INSERT INTO schema_version VALUES (?)", (SCHEMA_VERSION,))
@@ -278,6 +280,16 @@ class Database:
         """)
         logger.info("Database migration v5 applied.")
 
+    def _migrate_v6(self, conn: sqlite3.Connection) -> None:
+        """Originating sensor id (multi-host per-sensor dashboard views)."""
+        # ALTER ... ADD COLUMN isn't idempotent; guard it so re-running the
+        # migration (e.g. after a rolled-back schema_version) doesn't error.
+        cols = {r["name"] for r in conn.execute("PRAGMA table_info(alerts)")}
+        if "sensor" not in cols:
+            conn.execute("ALTER TABLE alerts ADD COLUMN sensor TEXT")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_alerts_sensor ON alerts(sensor)")
+        logger.info("Database migration v6 applied.")
+
     # ------------------------------------------------------------------
     # Alert CRUD
     # ------------------------------------------------------------------
@@ -291,8 +303,8 @@ class Database:
                   (alert_id, timestamp, severity, category, affected_host,
                    affected_mac, related_host, title, description,
                    recommended_action, confidence, confidence_rationale,
-                   dedup_key, status, extra)
-                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                   dedup_key, status, extra, sensor)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                 """,
                 (
                     alert.alert_id,
@@ -310,6 +322,7 @@ class Database:
                     alert.dedup_key,
                     alert.status.value,
                     json.dumps(alert.extra),
+                    alert.extra.get("sensor"),
                 ),
             )
 
@@ -328,6 +341,7 @@ class Database:
         severity: Optional[Severity] = None,
         status: Optional[AlertStatus] = None,
         host: Optional[str] = None,
+        sensor: Optional[str] = None,
     ) -> List[Alert]:
         """Fetch recent alerts with optional filters."""
         conn = self._get_connection()
@@ -346,6 +360,13 @@ class Database:
         if host:
             clauses.append("affected_host = ?")
             params.append(host)
+        if sensor:
+            # "local" selects alerts raised on this node (no forwarded sensor tag).
+            if sensor == "local":
+                clauses.append("sensor IS NULL")
+            else:
+                clauses.append("sensor = ?")
+                params.append(sensor)
 
         where = ("WHERE " + " AND ".join(clauses)) if clauses else ""
         params.append(limit)
@@ -354,6 +375,36 @@ class Database:
             params,
         ).fetchall()
         return [_row_to_alert(r) for r in rows]
+
+    def get_sensors(self, since: Optional[datetime] = None) -> List[Dict]:
+        """
+        Summarize the sensors that have reported alerts (for per-sensor views).
+        Returns [{sensor, alert_count, last_seen}, ...] ordered by recency.
+        Forwarded alerts carry a sensor id; locally-raised alerts have none and
+        are reported under the synthetic id "local".
+        """
+        conn = self._get_connection()
+        clauses = []
+        params: List[Any] = []
+        if since:
+            clauses.append("timestamp >= ?")
+            params.append(since.isoformat())
+        where = ("WHERE " + " AND ".join(clauses)) if clauses else ""
+        rows = conn.execute(
+            f"""
+            SELECT COALESCE(sensor, 'local') AS sensor,
+                   COUNT(*) AS alert_count,
+                   MAX(timestamp) AS last_seen
+            FROM alerts {where}
+            GROUP BY COALESCE(sensor, 'local')
+            ORDER BY last_seen DESC
+            """,
+            params,
+        ).fetchall()
+        return [
+            {"sensor": r["sensor"], "alert_count": r["alert_count"], "last_seen": r["last_seen"]}
+            for r in rows
+        ]
 
     def update_alert_status(self, alert_id: str, status: AlertStatus) -> None:
         """Change alert lifecycle status."""

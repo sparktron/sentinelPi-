@@ -107,10 +107,14 @@ class PacketCapture:
         event_queue: "queue.Queue[CaptureEvent]",
         bpf_filter: str = DEFAULT_BPF_FILTER,
         max_queue_size: int = 10_000,
+        promisc: bool = True,
     ) -> None:
         self.interfaces = interfaces
         self.event_queue = event_queue
         self.bpf_filter = bpf_filter
+        # Promiscuous capture is required to see other hosts' unicast traffic on
+        # a switch SPAN/mirror port (and for full LAN visibility generally).
+        self.promisc = promisc
         self._sniffer: Optional["AsyncSniffer"] = None
         self._running = False
         self._thread: Optional[threading.Thread] = None
@@ -187,6 +191,7 @@ class PacketCapture:
                     filter=self.bpf_filter,
                     prn=self._handle_packet,
                     store=False,       # Never store packets in memory
+                    promisc=self.promisc,
                     quiet=True,
                 )
                 self._sniffer.start()

@@ -31,6 +31,12 @@ network:
   # If set, any change to this MAC triggers a CRITICAL alert
   gateway_mac: ""   # e.g., "aa:bb:cc:dd:ee:ff"
 
+  # Switch SPAN/mirror-port mode. Enable when this interface is plugged into a
+  # mirror/SPAN port that receives a copy of all subnet traffic (not just this
+  # host's). Forces promiscuous capture so other hosts' unicast is seen.
+  # See docs/configuration_guide.md for switch setup.
+  mirror_mode: false
+
 # =============================================================================
 # TRUSTED DEVICES
 # =============================================================================
@@ -318,6 +324,13 @@ cluster:
   collector_url: ""           # sensor: https://collector-host:8888/api/ingest
   collector_key: ""           # shared secret: sensor sends it; collector requires it
   forward_min_severity: low   # sensor: only forward alerts at/above this severity
+  # Optional mTLS, layered on top of the shared key. Terminate client-cert auth
+  # at a reverse proxy in front of the collector (see docs/systemd_setup.md).
+  tls_client_cert: ""         # sensor: client cert PEM (may include the key)
+  tls_client_key: ""          # sensor: client key PEM (omit if in the cert)
+  tls_ca_cert: ""             # sensor: CA bundle to verify the collector's cert
+  tls_verify: true            # sensor: set false only for self-signed testing
+  ingest_require_verified_header: false  # collector: require proxy-verified client cert
 
 # =============================================================================
 # CORRELATION  (Phase 3 — turn alert noise into incidents)
@@ -331,3 +344,29 @@ correlation:
   min_sensors: 2          # actor seen by >= this many sensors -> incident
   min_targets: 5          # OR actor hit >= this many distinct targets -> incident
   cooldown_seconds: 600
+
+# =============================================================================
+# FLOW INGESTION  (Phase 3 — router/firewall coverage)
+# =============================================================================
+# See connections that never cross the Pi's own segment by ingesting flow data
+# from the gateway. Both sources are off by default and feed the same pipeline
+# as packet capture, so every connection detector works on them unchanged.
+#
+#   conntrack  — poll the Linux connection-tracking table. Best when the Pi is
+#                the gateway/router (or any host whose conntrack is worth
+#                watching). Falls back to /proc/net/nf_conntrack if the
+#                `conntrack` command isn't installed.
+#   netflow    — UDP collector for NetFlow v5/v9/IPFIX exports. Point your
+#                router/managed switch's flow exporter at this host:port.
+flow:
+  conntrack_enabled: false
+  conntrack_interval_seconds: 10
+  conntrack_command: conntrack    # falls back to /proc/net/nf_conntrack
+  netflow_enabled: false
+  netflow_bind_host: "0.0.0.0"
+  netflow_port: 2055              # common NetFlow/IPFIX collector port
+  # pfSense/OPNsense: tail filterlog. Point at a file the Pi can read — usually
+  # the firewall's syslog forwarded to the Pi and written out by rsyslog.
+  filterlog_enabled: false
+  filterlog_path: /var/log/filter.log
+  filterlog_interval_seconds: 5
