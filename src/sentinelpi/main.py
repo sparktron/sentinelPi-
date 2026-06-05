@@ -66,6 +66,7 @@ from .detectors.active_hours_detector import ActiveHoursDetector
 from .detectors.threat_intel_detector import ThreatIntelDetector
 from .intel.threat_feeds import ThreatIntelService
 from .capture.packet_capture import PacketCapture
+from .capture.flow_ingest import ConntrackFlowSource, NetFlowCollector, FilterlogSource
 from .capture.honeypot import HoneypotService
 from .utils.geo import init_geo
 from .utils.asn import init_asn
@@ -237,6 +238,12 @@ class SentinelPi:
         self._packet_capture: Optional[PacketCapture] = None
         self._honeypot: Optional[HoneypotService] = None
 
+        # Flow ingestion sources (conntrack / NetFlow / IPFIX) feed the same
+        # queue; the event router is shared and started once by whichever source
+        # comes up (packet capture and/or flow ingest).
+        self._flow_sources: List = []
+        self._event_router_started = False
+
         # Dashboard
         self._dashboard_server = None
 
@@ -330,16 +337,26 @@ class SentinelPi:
             logger.info("Packet capture disabled in config.")
             return
 
+        mirror = self.config.network.mirror_mode
         self._packet_capture = PacketCapture(
             interfaces=self.config.network.interfaces,
             event_queue=self._capture_queue,
+            promisc=True,   # required for SPAN/mirror visibility and full LAN coverage
         )
+        if mirror:
+            logger.info(
+                "Mirror/SPAN-port mode enabled — capturing all subnet traffic "
+                "promiscuously on %s.", ", ".join(self.config.network.interfaces),
+            )
         ok = self._packet_capture.start()
         if not ok:
             logger.warning("Packet capture unavailable — using proc polling only.")
             return
 
-        # Event router: reads from capture queue and dispatches to detectors
+        self._ensure_event_router()
+
+    def _build_event_detectors(self) -> list:
+        """Ordered list of detectors that consume packet-capture/flow events."""
         event_detectors = [
             self._arp_detector,
             self._dns_detector,
@@ -347,16 +364,28 @@ class SentinelPi:
             self._connection_detector,
             self._lateral_detector,
         ]
-        if self._doh_detector is not None:
-            event_detectors.append(self._doh_detector)
-        if self._geo_country_detector is not None:
-            event_detectors.append(self._geo_country_detector)
-        if self._asn_detector is not None:
-            event_detectors.append(self._asn_detector)
-        if self._active_hours_detector is not None:
-            event_detectors.append(self._active_hours_detector)
-        if self._threat_intel_detector is not None:
-            event_detectors.append(self._threat_intel_detector)
+        for optional in (
+            self._doh_detector,
+            self._geo_country_detector,
+            self._asn_detector,
+            self._active_hours_detector,
+            self._threat_intel_detector,
+        ):
+            if optional is not None:
+                event_detectors.append(optional)
+        return event_detectors
+
+    def _ensure_event_router(self) -> None:
+        """
+        Start the event router thread (idempotent). The router reads the shared
+        capture queue and dispatches each event to every detector. It's started
+        by whichever event source comes up first — packet capture or flow
+        ingest — so flow ingestion works even when scapy capture is disabled.
+        """
+        if self._event_router_started:
+            return
+
+        event_detectors = self._build_event_detectors()
 
         def _route_events():
             logger.info("Event router started.")
@@ -379,6 +408,63 @@ class SentinelPi:
         router_thread = threading.Thread(target=_route_events, daemon=True, name="EventRouter")
         self._threads.append(router_thread)
         router_thread.start()
+        self._event_router_started = True
+
+    def _start_flow_ingest(self) -> None:
+        """
+        Start router/firewall flow ingestion (Phase 3). Both sources are opt-in
+        and feed the shared capture queue, so every connection detector sees
+        flows the Pi can't sniff directly. Starts the event router if a source
+        comes up and packet capture didn't already.
+        """
+        fc = self.config.flow
+        started = []
+
+        if fc.conntrack_enabled:
+            src = ConntrackFlowSource(
+                self._capture_queue,
+                interval_seconds=fc.conntrack_interval_seconds,
+                command=fc.conntrack_command,
+                stop_event=self._stop_event,
+            )
+            if src.start():
+                self._flow_sources.append(src)
+                started.append("conntrack")
+            else:
+                logger.warning(
+                    "conntrack flow ingest unavailable — '%s' and %s both unreadable.",
+                    fc.conntrack_command, ConntrackFlowSource.PROC_PATH,
+                )
+
+        if fc.netflow_enabled:
+            collector = NetFlowCollector(
+                self._capture_queue,
+                bind_host=fc.netflow_bind_host,
+                bind_port=fc.netflow_port,
+                stop_event=self._stop_event,
+            )
+            if collector.start():
+                self._flow_sources.append(collector)
+                started.append(f"netflow/ipfix:{fc.netflow_port}")
+
+        if fc.filterlog_enabled:
+            src = FilterlogSource(
+                self._capture_queue,
+                path=fc.filterlog_path,
+                interval_seconds=fc.filterlog_interval_seconds,
+                stop_event=self._stop_event,
+            )
+            if src.start():
+                self._flow_sources.append(src)
+                started.append("filterlog")
+            else:
+                logger.warning(
+                    "filterlog flow ingest unavailable — %s not readable.", fc.filterlog_path,
+                )
+
+        if started:
+            logger.info("Flow ingest active: %s", ", ".join(started))
+            self._ensure_event_router()
 
     def _start_polling_threads(self) -> None:
         """Start all detector polling threads."""
@@ -516,6 +602,9 @@ class SentinelPi:
         logger.info("Starting packet capture...")
         self._start_packet_capture()
 
+        logger.info("Starting flow ingestion...")
+        self._start_flow_ingest()
+
         logger.info("Starting detector polling threads...")
         self._start_polling_threads()
 
@@ -563,6 +652,12 @@ class SentinelPi:
         logger.info("Stopping packet capture...")
         if self._packet_capture:
             self._packet_capture.stop()
+
+        for src in self._flow_sources:
+            try:
+                src.stop()
+            except Exception as exc:
+                logger.warning("Error stopping flow source %s: %s", type(src).__name__, exc)
 
         if self._honeypot:
             self._honeypot.stop()

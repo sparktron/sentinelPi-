@@ -344,3 +344,29 @@ correlation:
   min_sensors: 2          # actor seen by >= this many sensors -> incident
   min_targets: 5          # OR actor hit >= this many distinct targets -> incident
   cooldown_seconds: 600
+
+# =============================================================================
+# FLOW INGESTION  (Phase 3 — router/firewall coverage)
+# =============================================================================
+# See connections that never cross the Pi's own segment by ingesting flow data
+# from the gateway. Both sources are off by default and feed the same pipeline
+# as packet capture, so every connection detector works on them unchanged.
+#
+#   conntrack  — poll the Linux connection-tracking table. Best when the Pi is
+#                the gateway/router (or any host whose conntrack is worth
+#                watching). Falls back to /proc/net/nf_conntrack if the
+#                `conntrack` command isn't installed.
+#   netflow    — UDP collector for NetFlow v5/v9/IPFIX exports. Point your
+#                router/managed switch's flow exporter at this host:port.
+flow:
+  conntrack_enabled: false
+  conntrack_interval_seconds: 10
+  conntrack_command: conntrack    # falls back to /proc/net/nf_conntrack
+  netflow_enabled: false
+  netflow_bind_host: "0.0.0.0"
+  netflow_port: 2055              # common NetFlow/IPFIX collector port
+  # pfSense/OPNsense: tail filterlog. Point at a file the Pi can read — usually
+  # the firewall's syslog forwarded to the Pi and written out by rsyslog.
+  filterlog_enabled: false
+  filterlog_path: /var/log/filter.log
+  filterlog_interval_seconds: 5

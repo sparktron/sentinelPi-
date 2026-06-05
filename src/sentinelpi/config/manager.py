@@ -302,6 +302,31 @@ class CorrelationConfig:
 
 
 @dataclass
+class FlowIngestConfig:
+    """
+    Router/firewall flow ingestion (Phase 3). Lets SentinelPi see connections
+    that never cross the Pi's own segment by ingesting flow data from the
+    gateway instead of (or alongside) passive packet capture. All sources are
+    off by default; each emits the same CapturedConnection events the
+    packet-capture pipeline produces, so every connection detector works on
+    them unchanged.
+    """
+    # Linux conntrack table polling (Pi-as-gateway, or any host worth tracking).
+    conntrack_enabled: bool = False
+    conntrack_interval_seconds: int = 10
+    conntrack_command: str = "conntrack"   # falls back to /proc/net/nf_conntrack
+    # NetFlow / IPFIX UDP collector for router/managed-switch flow exports.
+    netflow_enabled: bool = False
+    netflow_bind_host: str = "0.0.0.0"
+    netflow_port: int = 2055
+    # pfSense/OPNsense filterlog tailing (point at a file the Pi can read —
+    # usually the firewall's syslog forwarded to and written by the Pi's rsyslog).
+    filterlog_enabled: bool = False
+    filterlog_path: str = "/var/log/filter.log"
+    filterlog_interval_seconds: int = 5
+
+
+@dataclass
 class Config:
     """Root configuration object. All subconfigs have safe defaults."""
     network: NetworkConfig = field(default_factory=NetworkConfig)
@@ -317,6 +342,7 @@ class Config:
     response: ResponseConfig = field(default_factory=ResponseConfig)
     cluster: ClusterConfig = field(default_factory=ClusterConfig)
     correlation: CorrelationConfig = field(default_factory=CorrelationConfig)
+    flow: FlowIngestConfig = field(default_factory=FlowIngestConfig)
 
     # Domains/IPs/ports to never alert on
     whitelist_domains: List[str] = field(default_factory=list)
