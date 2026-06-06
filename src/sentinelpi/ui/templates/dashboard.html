@@ -70,6 +70,22 @@
   <div class="card"><h3>Low / Info (24h)</h3><div class="val sev-low" id="cnt-loinfo">—</div></div>
 </div>
 
+<!-- Active Response (only shown when responders are enabled) -->
+<div class="section" id="responses-section" style="display:none">
+  <div class="section-header">
+    <h2>Active Response</h2>
+    <span class="refresh-note" id="responses-note">Pending actions need your approval</span>
+  </div>
+  <div class="section-content">
+    <table id="responses-table">
+      <thead>
+        <tr><th>Created</th><th>Responder</th><th>Target</th><th>Action</th><th>Status</th><th>Decision</th></tr>
+      </thead>
+      <tbody id="responses-body"><tr><td colspan="6" class="loading">Loading...</td></tr></tbody>
+    </table>
+  </div>
+</div>
+
 <!-- Alerts Table -->
 <div class="section">
   <div class="section-header">
@@ -155,10 +171,21 @@ function esc(s) {
   return d.innerHTML;
 }
 
+// Single fetch wrapper: if the session cookie has expired the server returns
+// 401, so bounce to the login page instead of silently showing stale data.
+async function apiFetch(url, opts) {
+  const r = await fetch(url, opts);
+  if (r.status === 401) {
+    window.location = '/login';
+    throw new Error('session expired');
+  }
+  return r;
+}
+
 // Load status summary
 async function loadStatus() {
   try {
-    const r = await fetch('/api/status');
+    const r = await apiFetch('/api/status');
     const data = await r.json();
     const counts = data.alert_counts_24h || {};
     document.getElementById('cnt-critical').textContent = counts.critical || 0;
@@ -184,7 +211,7 @@ async function loadAlerts() {
   if (host) url += `&host=${encodeURIComponent(host)}`;
 
   try {
-    const r = await fetch(url);
+    const r = await apiFetch(url);
     const alerts = await r.json();
     const tbody = document.getElementById('alerts-body');
     if (!alerts.length) {
@@ -213,14 +240,14 @@ async function loadAlerts() {
 }
 
 async function acknowledge(id, btn) {
-  await fetch(`/api/alerts/${id}/acknowledge`, {method: 'POST'});
+  await apiFetch(`/api/alerts/${id}/acknowledge`, {method: 'POST'});
   btn.textContent = '✓';
   btn.disabled = true;
 }
 
 async function muteAlert(id, btn) {
   if (!confirm('Mute this alert type? Future duplicates will be suppressed.')) return;
-  await fetch(`/api/alerts/${id}/mute`, {method: 'POST'});
+  await apiFetch(`/api/alerts/${id}/mute`, {method: 'POST'});
   btn.textContent = 'Muted';
   btn.disabled = true;
 }
@@ -228,7 +255,7 @@ async function muteAlert(id, btn) {
 // Load devices
 async function loadDevices() {
   try {
-    const r = await fetch('/api/devices');
+    const r = await apiFetch('/api/devices');
     const devices = await r.json();
     const tbody = document.getElementById('devices-body');
     tbody.innerHTML = devices.map(d => `
@@ -249,7 +276,7 @@ async function loadDevices() {
 }
 
 async function trustDevice(ip, btn) {
-  await fetch(`/api/devices/${encodeURIComponent(ip)}/trust`, {method: 'POST'});
+  await apiFetch(`/api/devices/${encodeURIComponent(ip)}/trust`, {method: 'POST'});
   btn.textContent = 'Trusted';
   btn.disabled = true;
 }
@@ -257,7 +284,7 @@ async function trustDevice(ip, btn) {
 // Load suspicious hosts
 async function loadSuspicious() {
   try {
-    const r = await fetch('/api/suspicious');
+    const r = await apiFetch('/api/suspicious');
     const hosts = await r.json();
     const tbody = document.getElementById('suspicious-body');
     if (!hosts.length) {
@@ -276,16 +303,83 @@ async function loadSuspicious() {
   } catch(e) { console.error('Suspicious hosts load failed:', e); }
 }
 
+// Load active-response actions. The /api/responses/* routes only exist when a
+// responder manager is wired (response.enabled), so a 404 means "no responders"
+// and we keep the section hidden.
+function responseBadge(status) {
+  const cls = {pending: 'medium', executed: 'low', failed: 'high',
+               rejected: 'info', planned: 'info'}[status] || 'info';
+  return `<span class="badge badge-${cls}">${esc(status)}</span>`;
+}
+
+async function loadResponses() {
+  let actions;
+  try {
+    const r = await apiFetch('/api/responses/recent');
+    if (r.status === 404) return;          // responders not enabled — stay hidden
+    if (!r.ok) return;
+    actions = await r.json();
+  } catch(e) { console.error('Responses load failed:', e); return; }
+
+  document.getElementById('responses-section').style.display = '';
+  const pending = actions.filter(a => a.status === 'pending').length;
+  document.getElementById('responses-note').textContent = pending
+    ? `${pending} pending action${pending === 1 ? '' : 's'} need your approval`
+    : 'No actions awaiting approval';
+
+  const tbody = document.getElementById('responses-body');
+  if (!actions.length) {
+    tbody.innerHTML = '<tr><td colspan="6" class="loading">No response actions yet.</td></tr>';
+    return;
+  }
+  tbody.innerHTML = actions.map(a => `
+    <tr>
+      <td style="white-space:nowrap"><small>${fmtTime(a.created_at)}</small></td>
+      <td>${esc(a.responder)}</td>
+      <td><code>${esc(a.target)}</code></td>
+      <td>
+        <div>${esc(a.description)}</div>
+        ${a.commands && a.commands.length
+          ? `<div class="description"><code>${a.commands.map(esc).join('<br>')}</code></div>` : ''}
+        ${a.dry_run ? '<span class="badge badge-info">DRY RUN</span>' : ''}
+        ${a.error ? `<div class="rec" style="color:var(--high)">${esc(a.error)}</div>` : ''}
+      </td>
+      <td>${responseBadge(a.status)}</td>
+      <td>
+        ${a.status === 'pending'
+          ? `<button class="action-btn" onclick="approveAction('${esc(a.action_id)}', this)">Approve</button>
+             <button class="action-btn" onclick="rejectAction('${esc(a.action_id)}', this)">Reject</button>`
+          : '—'}
+      </td>
+    </tr>
+  `).join('');
+}
+
+async function approveAction(id, btn) {
+  if (!confirm('Approve and execute this action now?')) return;
+  btn.disabled = true; btn.textContent = '…';
+  await apiFetch(`/api/responses/${id}/approve`, {method: 'POST'});
+  loadResponses();
+}
+
+async function rejectAction(id, btn) {
+  btn.disabled = true; btn.textContent = '…';
+  await apiFetch(`/api/responses/${id}/reject`, {method: 'POST'});
+  loadResponses();
+}
+
 // Initial load
 loadStatus();
 loadAlerts();
 loadDevices();
 loadSuspicious();
+loadResponses();
 
 // Auto-refresh every 30 seconds
 setInterval(() => {
   loadStatus();
   loadAlerts();
+  loadResponses();
 }, 30000);
 setInterval(loadDevices, 60000);
 setInterval(loadSuspicious, 60000);

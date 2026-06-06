@@ -78,7 +78,8 @@ English description, a confidence score, and a recommended next step.
 - **Behavioral baseline** — Welford online statistics; deviations scored, not hard-coded
 
 **🖥️ Interface & alerting**
-- **Web dashboard** — local dark-themed Flask UI: live alerts, device inventory, suspicious hosts
+- **Web dashboard** — local dark-themed Flask UI: live alerts, device inventory, suspicious hosts,
+  and a pending-response approval queue (token login, session cookie)
 - **Alert management** — dedup, cooldowns, severity levels, acknowledge & mute
 - **Structured outputs** — console, rotating JSON log, SQLite, optional email & webhooks
 - **Daily / weekly reports** — rolled-up summaries of what happened on the network
@@ -107,6 +108,12 @@ English description, a confidence score, and a recommended next step.
   </tr>
   <tr>
     <td><img src="docs/images/device-inventory.png" alt="Device inventory and suspicious hosts"></td>
+  </tr>
+  <tr>
+    <td align="center"><b>Active response — approve / reject pending actions</b></td>
+  </tr>
+  <tr>
+    <td><img src="docs/images/active-response.png" alt="Active response approval queue"></td>
   </tr>
   <tr>
     <td align="center"><b>Token login</b></td>
@@ -275,7 +282,8 @@ Available responders (all off by default, each with its own guardrails):
 | Kill switch | Run an operator-supplied command on compromise | No command + no categories = never fires |
 
 The honest default is to watch decisions in dry-run for days, then arm with a human in the
-loop before trusting any category to fire on its own.
+loop before trusting any category to fire on its own. When armed, pending actions surface in
+the dashboard's **Active Response** queue, where you approve or reject each one with a click.
 
 ## Whole-network coverage
 
