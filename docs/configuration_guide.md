@@ -79,14 +79,22 @@ dashboard:
   enabled: true
   host: "127.0.0.1"    # ONLY change to "0.0.0.0" if you understand the security implications
   port: 8888
-  access_token: ""      # Set a token to require authentication
+  access_token: ""      # Stable token; if left blank, one is generated and logged each run
 ```
 
 Access at: `http://localhost:8888/`
 
-If you set an `access_token`, provide it via:
-- Query parameter: `http://localhost:8888/?token=yourtoken`
-- Header: `Authorization: Bearer yourtoken`
+Authentication is always on. Set a stable `access_token`, or leave it blank and
+SentinelPi prints a generated one to the log on startup.
+
+- **In a browser:** open `http://localhost:8888/` — you'll be redirected to a
+  login page. Paste the token and sign in; a signed, HttpOnly, SameSite=Strict
+  session cookie keeps you logged in (use *Log out* to clear it).
+- **Programmatically** (curl, scripts): send the header
+  `Authorization: Bearer yourtoken`.
+
+The token is **never** accepted via the query string (`?token=...`) — that would
+leak it into access logs, browser history, and `Referer` headers.
 
 ## Notifications
 

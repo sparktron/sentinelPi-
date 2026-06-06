@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SentinelPi — Sign in</title>
+<style>
+  :root {
+    --bg: #0f1117; --surface: #1a1d27; --border: #2d3148;
+    --text: #e2e8f0; --muted: #94a3b8; --accent: #6366f1; --high: #ef4444;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'JetBrains Mono', 'Courier New', monospace;
+    background: var(--bg); color: var(--text);
+    min-height: 100vh; display: flex; align-items: center; justify-content: center;
+  }
+  .login {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 8px; padding: 2rem; width: 360px; max-width: 90vw;
+  }
+  h1 { color: var(--accent); font-size: 1.4rem; margin-bottom: 0.25rem; }
+  .subtitle { color: var(--muted); font-size: 0.8rem; margin-bottom: 1.5rem; }
+  label { display: block; font-size: 0.75rem; color: var(--muted);
+          text-transform: uppercase; margin-bottom: 0.4rem; }
+  input {
+    width: 100%; background: var(--bg); border: 1px solid var(--border);
+    color: var(--text); padding: 0.6rem 0.75rem; border-radius: 4px;
+    font-size: 0.9rem; font-family: inherit;
+  }
+  input:focus { outline: none; border-color: var(--accent); }
+  button {
+    width: 100%; margin-top: 1rem; background: var(--accent); color: #fff;
+    border: none; padding: 0.6rem; border-radius: 4px; font-size: 0.9rem;
+    font-family: inherit; cursor: pointer;
+  }
+  button:hover { filter: brightness(1.1); }
+  .error { color: var(--high); font-size: 0.8rem; margin-top: 0.75rem; }
+  .hint { color: var(--muted); font-size: 0.7rem; margin-top: 1rem; line-height: 1.4; }
+</style>
+</head>
+<body>
+  <form class="login" method="post" action="{{ url_for('login') }}">
+    <h1>🛡 SentinelPi</h1>
+    <p class="subtitle">Defensive Network Monitor</p>
+    <label for="token">Access token</label>
+    <input type="password" id="token" name="token" autofocus autocomplete="current-password"
+           placeholder="Paste your dashboard access token">
+    <button type="submit">Sign in</button>
+    {% if error %}<div class="error">{{ error }}</div>{% endif %}
+    <div class="hint">
+      The token is set in <code>dashboard.access_token</code>, or auto-generated
+      and printed to the log on startup.
+    </div>
+  </form>
+</body>
+</html>

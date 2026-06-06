@@ -67,3 +67,62 @@ def test_is_loopback_classification():
     assert _is_loopback("localhost")
     assert not _is_loopback("0.0.0.0")
     assert not _is_loopback("192.168.1.50")
+
+
+# ---------------------------------------------------------------------------
+# Browser login flow (regression for the header-only dead end: a browser can't
+# set an Authorization header on navigation, so '/' must lead to a login page,
+# and a cookie set there must authenticate both pages and the API).
+# ---------------------------------------------------------------------------
+
+def test_unauthenticated_page_redirects_to_login(client):
+    c, _ = client
+    resp = c.get("/")
+    assert resp.status_code == 302
+    assert "/login" in resp.headers["Location"]
+
+
+def test_login_get_serves_form(client):
+    c, _ = client
+    resp = c.get("/login")
+    assert resp.status_code == 200
+    assert b"Access token" in resp.data
+
+
+def test_login_with_wrong_token_is_rejected(client):
+    c, _ = client
+    resp = c.post("/login", data={"token": "not-the-token"})
+    assert resp.status_code == 401
+    # No cookie granted → page still gated.
+    assert c.get("/").status_code == 302
+
+
+def test_login_with_valid_token_grants_browser_access(client):
+    c, token = client
+    # Posting the token in the form body logs in and redirects to the dashboard.
+    resp = c.post("/login", data={"token": token})
+    assert resp.status_code == 302
+    assert resp.headers["Location"] in ("/", "http://localhost/")
+    # The session cookie now authenticates the page itself...
+    assert c.get("/").status_code == 200
+    # ...and the JSON API the page fetches (no Authorization header needed).
+    assert c.get("/api/status").status_code == 200
+
+
+def test_logout_clears_session(client):
+    c, token = client
+    c.post("/login", data={"token": token})
+    assert c.get("/").status_code == 200
+    logout = c.get("/logout")
+    assert logout.status_code == 302
+    assert "/login" in logout.headers["Location"]
+    # Cookie cleared → gated again.
+    assert c.get("/").status_code == 302
+
+
+def test_query_string_token_still_rejected_for_pages(client):
+    """The old (insecure) ?token= path must not authenticate the page either."""
+    c, token = client
+    resp = c.get(f"/?token={token}")
+    assert resp.status_code == 302
+    assert "/login" in resp.headers["Location"]

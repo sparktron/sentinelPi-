@@ -11,7 +11,7 @@ port scans, C2 beaconing, DNS abuse, lateral movement, SSH brute force, and more
 [![Python](https://img.shields.io/badge/python-3.11%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/)
 [![Platform](https://img.shields.io/badge/platform-Raspberry%20Pi%20%7C%20Linux-C51A4A?logo=raspberrypi&logoColor=white)](#requirements)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-pytest-0A9EDC?logo=pytest&logoColor=white)](#testing)
+[![CI](https://github.com/sparktron/sentinelPi-/actions/workflows/ci.yml/badge.svg)](https://github.com/sparktron/sentinelPi-/actions/workflows/ci.yml)
 [![Defensive only](https://img.shields.io/badge/scope-defensive%20only-blue.svg)](#safety-boundaries)
 
 </div>
@@ -108,6 +108,12 @@ English description, a confidence score, and a recommended next step.
   <tr>
     <td><img src="docs/images/device-inventory.png" alt="Device inventory and suspicious hosts"></td>
   </tr>
+  <tr>
+    <td align="center"><b>Token login</b></td>
+  </tr>
+  <tr>
+    <td align="center"><img src="docs/images/login.png" alt="SentinelPi dashboard login" width="380"></td>
+  </tr>
 </table>
 
 ## Requirements
@@ -185,18 +191,22 @@ sentinelpi --config /etc/sentinelpi/sentinelpi.yaml
 SENTINELPI_CONFIG=config/sentinelpi.yaml python -m sentinelpi.main
 ```
 
-**Accessing the dashboard.** Every dashboard route requires a bearer token. Set a stable one
-under `dashboard.access_token` in your config; if you leave it blank, SentinelPi generates a
-random token per run and prints it to the log on startup:
+**Accessing the dashboard.** Authentication is always on. Set a stable token under
+`dashboard.access_token`; if you leave it blank, SentinelPi generates one per run and prints
+it to the log on startup:
 
 ```
 No dashboard access_token configured — generated a random one for this run:
     <token>
-Pass it as 'Authorization: Bearer <token>'.
 ```
 
-The dashboard binds to `127.0.0.1:8888` by default — keep it on loopback and reach it over an
-SSH tunnel rather than exposing it to the LAN:
+- **In a browser:** open the dashboard and you'll land on a login page — paste the token and
+  sign in. A signed, HttpOnly, `SameSite=Strict` session cookie keeps you logged in.
+- **Programmatically** (curl, scripts): send `Authorization: Bearer <token>`.
+
+The token is never accepted via the query string (it would leak into logs, history, and
+`Referer`). The dashboard binds to `127.0.0.1:8888` by default — keep it on loopback and reach
+it over an SSH tunnel rather than exposing it to the LAN:
 
 ```bash
 ssh -L 8888:127.0.0.1:8888 pi@your-pi

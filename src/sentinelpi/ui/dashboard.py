@@ -11,8 +11,11 @@ Features:
 
 Security:
 - Binds to 127.0.0.1 by default (never exposed to network unless configured)
-- Access token required on every route, supplied via the Authorization header
-  only (never the query string); auto-generated and logged once if unset
+- Access required on every route. Browsers log in at /login (POST the token in
+  the form body, never the URL) and get a signed, HttpOnly, SameSite=Strict
+  session cookie; programmatic clients pass 'Authorization: Bearer <token>'.
+  The token is never accepted from the query string (it would leak into logs,
+  history, and Referer). The token auto-generates and is logged once if unset.
 - Refuses to bind to a non-loopback host with no token (fail closed)
 - No user input is ever evaluated as code
 - All dynamic data is JSON-serialized (no raw template injection)
@@ -36,7 +39,10 @@ from ..models import AlertStatus, Severity
 logger = logging.getLogger(__name__)
 
 try:
-    from flask import Flask, jsonify, render_template, request, abort, Response
+    from flask import (
+        Flask, jsonify, render_template, request, abort, Response,
+        session, redirect, url_for,
+    )
     FLASK_AVAILABLE = True
 except ImportError:
     FLASK_AVAILABLE = False
@@ -103,6 +109,15 @@ def create_app(
     app = Flask(__name__, template_folder="templates")
     # Random per-process secret — never a hardcoded value (signs Flask sessions/flashes).
     app.config["SECRET_KEY"] = secrets.token_hex(32)
+    # Harden the login cookie. It carries only an "authenticated" flag (signed by
+    # SECRET_KEY, so a client can't forge it), never the token itself.
+    app.config.update(
+        SESSION_COOKIE_HTTPONLY=True,      # JavaScript cannot read it
+        SESSION_COOKIE_SAMESITE="Strict",  # not sent cross-site (CSRF guard for mutations)
+        # SECURE stays off: the dashboard serves plain HTTP on loopback, where a
+        # Secure cookie would never be sent and would lock you out. Terminate TLS
+        # at a reverse proxy if you expose it, and set this True there.
+    )
 
     # Secure by default: if no token was configured, generate one and log it
     # once. This means the dashboard — which exposes the full network picture
@@ -121,21 +136,45 @@ def create_app(
     # Authentication middleware (token required, header only)
     # ------------------------------------------------------------------
 
+    def _is_authenticated() -> bool:
+        """True if the caller holds a valid login cookie OR a valid Bearer token.
+
+        Browsers authenticate with the signed session cookie set at /login;
+        programmatic clients (curl, scripts, sensors hitting read APIs) pass
+        ``Authorization: Bearer <token>``. The token is never read from the query
+        string — that would leak it into access logs, history, and Referer.
+        """
+        if session.get("authed") is True:
+            return True
+        token = config.dashboard.access_token
+        if not token:
+            # Fail closed: an empty token should be impossible (auto-generated
+            # above), but if it ever happens, deny rather than expose.
+            return False
+        auth = request.headers.get("Authorization", "")
+        provided = auth[7:] if auth.startswith("Bearer ") else ""
+        # Constant-time compare to avoid leaking the token via timing.
+        return bool(provided) and hmac.compare_digest(provided, token)
+
     def require_token(f):
+        """Guard API routes — respond 401 (JSON) when not authenticated."""
         @wraps(f)
         def decorated(*args, **kwargs):
-            token = config.dashboard.access_token
-            if not token:
-                # Fail closed: an empty token should be impossible (auto-generated
-                # above), but if it ever happens, deny rather than expose.
+            if not _is_authenticated():
                 abort(401)
-            # Header only — never accept the token via query string, which lands
-            # in access logs, browser history, and Referer headers.
-            auth = request.headers.get("Authorization", "")
-            provided = auth[7:] if auth.startswith("Bearer ") else ""
-            # Constant-time compare to avoid leaking the token via timing.
-            if not provided or not hmac.compare_digest(provided, token):
-                abort(401)
+            return f(*args, **kwargs)
+        return decorated
+
+    def require_page(f):
+        """Guard HTML pages — redirect to the login form when not authenticated.
+
+        A browser navigating to a page cannot set an Authorization header, so an
+        unauthenticated visit must land on /login rather than a dead 401.
+        """
+        @wraps(f)
+        def decorated(*args, **kwargs):
+            if not _is_authenticated():
+                return redirect(url_for("login"))
             return f(*args, **kwargs)
         return decorated
 
@@ -144,9 +183,34 @@ def create_app(
     # ------------------------------------------------------------------
 
     @app.route("/")
-    @require_token
+    @require_page
     def index():
         return render_template("dashboard.html")
+
+    @app.route("/login", methods=["GET", "POST"])
+    def login():
+        # Already authenticated (cookie or Bearer)? Skip the form.
+        if _is_authenticated():
+            return redirect(url_for("index"))
+        error = ""
+        if request.method == "POST":
+            # The token arrives in the form body, never the URL, so it stays out
+            # of access logs and history. Constant-time compare.
+            provided = request.form.get("token", "")
+            token = config.dashboard.access_token
+            if token and provided and hmac.compare_digest(provided, token):
+                session["authed"] = True
+                return redirect(url_for("index"))
+            error = "Invalid access token."
+        # 401 on a failed POST so clients/tests can tell success from failure;
+        # 200 on the initial GET of the form.
+        status = 401 if request.method == "POST" else 200
+        return render_template("login.html", error=error), status
+
+    @app.route("/logout", methods=["GET", "POST"])
+    def logout():
+        session.clear()
+        return redirect(url_for("login"))
 
     @app.route("/api/status")
     @require_token
