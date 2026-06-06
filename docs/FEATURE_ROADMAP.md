@@ -90,8 +90,13 @@ Move from detect-only to detect-and-respond. **Gate every action behind explicit
   `auto_execute_categories` trust list) with a pending registry and `approve()`/`reject()`;
   dashboard `/api/responses/{pending,recent,<id>/approve,<id>/reject}` (auth-gated, only present
   when responders are wired). `ResponderAction` gained id/status/lifecycle. Tests in
-  `test_responders.py` + `test_response_api.py`. Follow-up: surface approve/reject in a notifier
-  (Telegram/Slack button) and a dashboard UI panel._
+  `test_responders.py` + `test_response_api.py`._
+  - ✅ **Dashboard approval panel.** _Shipped (2026-06-06): an "Active Response" section in
+    `ui/templates/dashboard.html` lists `/api/responses/recent` with Approve/Reject buttons on
+    pending actions; hidden when no responder manager is wired (routes 404). Verified end-to-end
+    against the real waitress-served app. Render tests in `test_dashboard_render.py`._
+  - **Follow-up (open):** surface approve/reject in a notifier (Telegram/Slack/ntfy actionable
+    button) so you can confirm from your phone without opening the dashboard — see Phase 5.
 - ✅ **Honeypot / canary ports.** Open a few fake services; any connection is high-fidelity
   evidence of internal scanning. _Shipped: `capture/honeypot.py` — binds configured canary ports,
   raises a HIGH `HONEYPOT` alert (new category) on any connect, skips unbindable ports. Gated by
@@ -173,6 +178,12 @@ Today SentinelPi sees its own host + the LAN it can sniff. To protect *the netwo
 ## Phase 5 — Usability, reporting, integration
 - **Real-time dashboard upgrade:** WebSocket live alert feed, network map (devices + edges), incident
   timeline view, per-host drill-down. (Pairs with the dashboard-hardening from review H2/H3.)
+  - ✅ **Browser login + session auth.** _Shipped (2026-06-06): the H2 header-only token hardening
+    had made the dashboard unreachable from a browser (the index route 401'd on navigation). Added a
+    `/login` page (token posted in the form body, never the URL) that sets a signed, HttpOnly,
+    SameSite=Strict session cookie; routes accept the cookie OR a `Bearer` header; query-string
+    tokens stay rejected; `/logout` clears it. Frontend `apiFetch` redirects to `/login` on any 401.
+    Tests in `test_dashboard_auth.py` + `test_dashboard_render.py`._
 - **Notifier expansion:** Telegram, Slack, Discord, ntfy, Apple Push — with rich actionable buttons
   (ack / mute / quarantine).
 - **Scheduled reports:** the `_generate_daily_report` scaffold → emailed daily/weekly digest + a
@@ -191,15 +202,61 @@ Today SentinelPi sees its own host + the LAN it can sniff. To protect *the netwo
 - **Self-monitoring / watchdog:** detect if capture stopped, a thread died, or disk is full, and
   alert on *its own* degradation (a security tool that silently dies is worse than none).
 - **Config validation + `--check` mode** that lints config and tests notifiers/responders in dry-run.
+  _Partially shipped: `--check-config` validates the config and exits. Open: actually exercise
+  notifiers/responders in dry-run from `--check`._
 - **Backup/restore** of the baseline DB so a re-image doesn't reset months of learned behavior.
+- ✅ **Continuous integration.** _Shipped (2026-06-06): `.github/workflows/ci.yml` runs the full
+  pytest suite on Python 3.11 + 3.12 for every push/PR (README badge reflects status). Open:
+  add `ruff` lint + `mypy` (config already present in `pyproject.toml`) and coverage upload._
 
 ---
 
 ## Recommended near-term slice (highest value, lowest risk)
-If you want the biggest "protector" payoff for the least work after Phase 0:
+The original "biggest protector payoff for least work" slice — status as of 2026-06-06:
 
-1. **Threat-intel blocklist matching** (Phase 1) — instant accuracy boost, low complexity.
-2. **Incident correlation** (Phase 4) — turns alert noise into a story; biggest UX win.
-3. **Responder framework in dry-run + DNS sinkhole/quarantine** (Phase 2) — the actual
-   "protect" capability, shipped safely behind opt-in.
-4. **Telegram/ntfy actionable notifier** (Phase 5) — closes the loop so you can respond from your phone.
+1. ✅ **Threat-intel blocklist matching** (Phase 1) — shipped.
+2. ✅ **Cross-sensor incident correlation** (Phase 3) — shipped (`alerts/correlator.py`). The
+   *single-host* alert-chain → incident engine (Phase 4) is still open.
+3. ✅ **Responder framework + DNS sinkhole/quarantine, dry-run by default** (Phase 2) — shipped,
+   now with a dashboard approval panel.
+4. **Telegram/ntfy actionable notifier** (Phase 5) — still the best next step (see below).
+
+---
+
+## Next session — open items for implementation
+
+Pick up here in a fresh chat. Ordered by value/effort; each is independently shippable and
+should follow the project's conventions (opt-in config, dry-run-safe, tests alongside).
+
+1. **Actionable notifier (Telegram or ntfy) with approve/reject.** _Highest value next._
+   Closes the loop opened by the approval workflow: push a PENDING action to your phone with
+   Approve/Reject buttons that call the existing `/api/responses/<id>/{approve,reject}` endpoints.
+   Build on the `Notifier` interface (`alerts/notifiers.py`) and the `ResponderManager` pending
+   registry. Start with ntfy (simplest: HTTP POST, action buttons) before Telegram's bot API.
+   Scope: new notifier + config block + delivery of the action id + tests.
+
+2. **Self-monitoring / watchdog.** A security tool that silently dies is worse than none. Detect
+   stalled capture (no events in N seconds), a dead worker thread, threat-feed refresh failures, or
+   low disk, and raise a `SYSTEM`-category alert on SentinelPi's *own* degradation. Hook into the
+   event router / main loop in `main.py`; emit through the normal alert pipeline.
+
+3. **Single-host incident engine (Phase 4 sequence/correlation).** The cross-sensor correlator
+   exists; this is the per-host story: chain "new device → port scan → admin connection" into one
+   `INCIDENT` with a timeline instead of N alerts. Likely a sibling to `alerts/correlator.py`
+   keyed on actor + ordered alert categories within a window.
+
+4. **CI hardening.** Add `ruff` lint + `mypy` jobs to `.github/workflows/ci.yml` (both already
+   configured in `pyproject.toml`) and a coverage report. Low risk, tightens the safety net.
+
+5. **`--check` exercises notifiers/responders in dry-run.** Extend the existing `--check-config`
+   so it also fires each configured notifier and plans each responder in dry-run, reporting
+   success/failure — catches misconfigured webhooks/SMTP/feeds before they matter.
+
+6. **Per-host profile dimensions beyond active-hours** (Phase 4): typical ports / bytes / peer-set,
+   alerting on deviation from the host's *own* learned profile. Extends
+   `detectors/active_hours_detector.py`'s persistence pattern (new schema-versioned tables).
+
+**Project conventions for any of the above:** gate new behavior behind a config flag (default
+off/safe), keep responders dry-run + approval-gated, add tests in `tests/` (suite currently 281,
+green on 3.11/3.12), and run `pytest -q` before committing. Dashboard behavior that lives in
+template JS should get a render assertion in `test_dashboard_render.py`.
