@@ -17,7 +17,7 @@ Thread model:
   - LateralMovementDetector thread: polls /proc/net every 60s.
   - PacketCapture thread: scapy sniff loop (if enabled).
   - EventRouter thread: dispatches packet events to detectors.
-  - DashboardServer thread: Flask dev server (if enabled).
+  - DashboardServer thread: waitress production server when available (if enabled).
 
 All detector threads share:
   - Config object (read-only after startup)
@@ -40,7 +40,7 @@ import time
 from pathlib import Path
 from typing import List, Optional
 
-from .config.manager import Config, load_config
+from .config.manager import Config, load_config, validate_config
 from .storage.database import Database
 from .baseline.engine import BaselineEngine
 from .inventory.device_tracker import DeviceTracker
@@ -662,11 +662,17 @@ class SentinelPi:
         if self._honeypot:
             self._honeypot.stop()
 
+        if self._dashboard_server:
+            self._dashboard_server.stop()
+
         logger.info("Waiting for threads to finish...")
         for t in self._threads:
             t.join(timeout=5.0)
             if t.is_alive():
                 logger.warning("Thread %s did not stop cleanly.", t.name)
+
+        logger.info("Closing notifiers...")
+        self._alert_manager.close_notifiers()
 
         logger.info("Closing database...")
         self._db.close()
@@ -714,6 +720,12 @@ Examples:
 
     if args.check_config:
         config = load_config(args.config)
+        issues = validate_config(config)
+        if issues:
+            print(f"Configuration INVALID (loaded from: {config._source_path or 'defaults'})")
+            for issue in issues:
+                print(f"  - {issue}")
+            sys.exit(2)
         print(f"Configuration OK (loaded from: {config._source_path or 'defaults'})")
         print(f"  Interfaces: {config.network.interfaces}")
         print(f"  Subnets: {config.network.subnets}")

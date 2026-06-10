@@ -191,8 +191,8 @@ dashboard:
   host: "127.0.0.1"    # IMPORTANT: Keep as 127.0.0.1 unless you know what you're doing
   port: 8888
   debug: false
-  # Optional: protect dashboard with a token
-  # Provide via Authorization: Bearer <token> header or ?token=<token> query param
+  # Optional stable dashboard token. Browsers use the login page; scripts use
+  # Authorization: Bearer <token>. Query-string tokens are intentionally rejected.
   access_token: ""     # e.g., "mysecrettoken123"
 
 # =============================================================================

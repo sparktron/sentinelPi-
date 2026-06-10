@@ -17,6 +17,7 @@ import threading
 import pytest
 
 from sentinelpi.ui import dashboard as dash
+from sentinelpi.main import SentinelPi
 
 pytestmark = pytest.mark.skipif(not dash.FLASK_AVAILABLE, reason="Flask not installed")
 
@@ -93,3 +94,39 @@ def test_falls_back_to_dev_server_without_waitress(
 def test_stop_is_safe_before_start(config, db, device_tracker, baseline, alert_manager):
     server = _make_server(config, db, device_tracker, baseline, alert_manager)
     server.stop()  # must not raise
+
+
+def test_sentinelpi_shutdown_stops_dashboard_server():
+    app = SentinelPi.__new__(SentinelPi)
+    app._packet_capture = None
+    app._flow_sources = []
+    app._honeypot = None
+    app._threads = []
+
+    class _Dashboard:
+        stopped = False
+
+        def stop(self):
+            self.stopped = True
+
+    class _DB:
+        closed = False
+
+        def close(self):
+            self.closed = True
+
+    class _AlertManager:
+        closed = False
+
+        def close_notifiers(self):
+            self.closed = True
+
+    app._dashboard_server = _Dashboard()
+    app._alert_manager = _AlertManager()
+    app._db = _DB()
+
+    app._shutdown()
+
+    assert app._dashboard_server.stopped
+    assert app._alert_manager.closed
+    assert app._db.closed

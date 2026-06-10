@@ -60,6 +60,16 @@ class RunningStats:
         delta2 = value - self.mean
         self._M2 += delta * delta2
 
+    @classmethod
+    def from_snapshot(cls, mean: float, stddev: float, sample_count: int) -> "RunningStats":
+        """Rehydrate stats from the database snapshot format."""
+        stats = cls()
+        stats.n = max(0, int(sample_count or 0))
+        stats.mean = float(mean or 0.0)
+        if stats.n >= 2:
+            stats._M2 = (float(stddev or 0.0) ** 2) * stats.n
+        return stats
+
     @property
     def variance(self) -> float:
         return self._M2 / self.n if self.n >= 2 else 0.0
@@ -129,12 +139,32 @@ class BaselineEngine:
 
     def _load_from_db(self) -> None:
         """Pre-populate in-memory caches from database."""
-        # Load top DNS domains
         top_domains = self.db.get_top_dns_domains(limit=5000)
+        destinations = self.db.get_baseline_destinations()
+        hourly_rows = self.db.get_hourly_baselines()
         with self._lock:
             for row in top_domains:
                 self._known_domains.add(row["domain"])
-        logger.debug("Loaded %d known DNS domains from baseline.", len(self._known_domains))
+            for row in destinations:
+                self._known_destinations.add((
+                    row["src_ip"],
+                    row["dst_ip"],
+                    int(row["dst_port"]),
+                    row["protocol"],
+                ))
+            for row in hourly_rows:
+                key = (row["ip"], int(row["hour_of_day"]), int(row["day_of_week"]))
+                self._conn_stats[key] = RunningStats.from_snapshot(
+                    row["avg_conn"],
+                    row["stddev_conn"],
+                    row["sample_count"],
+                )
+        logger.debug(
+            "Loaded baseline: %d DNS domains, %d destinations, %d hourly connection rows.",
+            len(self._known_domains),
+            len(self._known_destinations),
+            len(self._conn_stats),
+        )
 
     @property
     def is_learning(self) -> bool:

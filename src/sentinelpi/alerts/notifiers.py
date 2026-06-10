@@ -51,6 +51,10 @@ class BaseNotifier(ABC):
         """Deliver the alert. Must be thread-safe."""
         ...
 
+    def close(self, timeout: float = 5.0) -> None:
+        """Release resources and stop background workers, if any."""
+        return None
+
     def _alert_to_dict(self, alert: Alert) -> dict:
         """Convert an Alert to a JSON-serializable dict."""
         return {
@@ -139,6 +143,10 @@ class FileNotifier(BaseNotifier):
         except Exception as exc:
             logger.error("FileNotifier write failed: %s", exc)
 
+    def close(self, timeout: float = 5.0) -> None:
+        with self._lock:
+            self._handler.close()
+
 
 class EmailNotifier(BaseNotifier):
     """
@@ -153,6 +161,7 @@ class EmailNotifier(BaseNotifier):
         self._min_severity = Severity(self._config.email_min_severity)
         import queue as q_module
         self._queue: "q_module.Queue[Alert]" = q_module.Queue(maxsize=100)
+        self._stop_event = threading.Event()
         self._thread = threading.Thread(target=self._worker, daemon=True, name="EmailNotifier")
         self._thread.start()
 
@@ -161,6 +170,9 @@ class EmailNotifier(BaseNotifier):
             return
         if alert.severity < self._min_severity:
             return
+        if self._stop_event.is_set():
+            logger.warning("Email notifier is stopping — dropping alert notification.")
+            return
         try:
             self._queue.put_nowait(alert)
         except Exception:
@@ -168,15 +180,21 @@ class EmailNotifier(BaseNotifier):
 
     def _worker(self) -> None:
         """Background thread that drains the email queue."""
-        while True:
+        while not self._stop_event.is_set() or not self._queue.empty():
             try:
-                alert = self._queue.get(timeout=5.0)
+                alert = self._queue.get(timeout=0.5)
             except queue.Empty:
                 continue
             try:
                 self._send_email(alert)
             except Exception as exc:
                 logger.warning("Email notification failed: %s", exc)
+
+    def close(self, timeout: float = 5.0) -> None:
+        self._stop_event.set()
+        self._thread.join(timeout=timeout)
+        if self._thread.is_alive():
+            logger.warning("Email notifier did not stop cleanly.")
 
     def _send_email(self, alert: Alert) -> None:
         """Send a single alert email."""
@@ -187,7 +205,7 @@ class EmailNotifier(BaseNotifier):
             f"Severity: {alert.severity.value.upper()}\n"
             f"Category: {alert.category.value}\n"
             f"Host: {alert.affected_host}\n"
-            f"Time: {alert.timestamp.isoformat()}Z\n\n"
+            f"Time: {alert.timestamp.isoformat()}\n\n"
             f"Title: {alert.title}\n\n"
             f"Description:\n{alert.description}\n\n"
             f"Recommended Action:\n{alert.recommended_action}\n\n"
@@ -240,6 +258,7 @@ class WebhookNotifier(BaseNotifier):
         self._hostname = socket.gethostname()
         import queue as q_module
         self._queue: "q_module.Queue[Alert]" = q_module.Queue(maxsize=200)
+        self._stop_event = threading.Event()
         self._thread = threading.Thread(target=self._worker, daemon=True, name="WebhookNotifier")
         self._thread.start()
 
@@ -248,21 +267,30 @@ class WebhookNotifier(BaseNotifier):
             return
         if alert.severity < self._min_severity:
             return
+        if self._stop_event.is_set():
+            logger.warning("Webhook notifier is stopping — dropping notification.")
+            return
         try:
             self._queue.put_nowait(alert)
         except Exception:
             logger.warning("Webhook queue full — dropping notification.")
 
     def _worker(self) -> None:
-        while True:
+        while not self._stop_event.is_set() or not self._queue.empty():
             try:
-                alert = self._queue.get(timeout=5.0)
+                alert = self._queue.get(timeout=0.5)
             except queue.Empty:
                 continue
             try:
                 self._post_webhook(alert)
             except Exception as exc:
                 logger.warning("Webhook notification failed: %s", exc)
+
+    def close(self, timeout: float = 5.0) -> None:
+        self._stop_event.set()
+        self._thread.join(timeout=timeout)
+        if self._thread.is_alive():
+            logger.warning("Webhook notifier did not stop cleanly.")
 
     def _post_webhook(self, alert: Alert) -> None:
         try:
@@ -302,6 +330,7 @@ class ForwardNotifier(BaseNotifier):
         self._min_severity = Severity(self._cluster.forward_min_severity)
         import queue as q_module
         self._queue: "q_module.Queue[Alert]" = q_module.Queue(maxsize=500)
+        self._stop_event = threading.Event()
         self._thread = threading.Thread(target=self._worker, daemon=True, name="ForwardNotifier")
         self._thread.start()
 
@@ -312,21 +341,30 @@ class ForwardNotifier(BaseNotifier):
             return
         if alert.extra.get("sensor"):
             return  # don't re-forward a remote alert
+        if self._stop_event.is_set():
+            logger.warning("Forward notifier is stopping — dropping forwarded alert.")
+            return
         try:
             self._queue.put_nowait(alert)
         except Exception:
             logger.warning("Forward queue full — dropping forwarded alert.")
 
     def _worker(self) -> None:
-        while True:
+        while not self._stop_event.is_set() or not self._queue.empty():
             try:
-                alert = self._queue.get(timeout=5.0)
+                alert = self._queue.get(timeout=0.5)
             except queue.Empty:
                 continue
             try:
                 self._forward(alert)
             except Exception as exc:
                 logger.warning("Alert forwarding failed: %s", exc)
+
+    def close(self, timeout: float = 5.0) -> None:
+        self._stop_event.set()
+        self._thread.join(timeout=timeout)
+        if self._thread.is_alive():
+            logger.warning("Forward notifier did not stop cleanly.")
 
     def _forward(self, alert: Alert) -> None:
         import requests

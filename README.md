@@ -198,6 +198,10 @@ sentinelpi --config /etc/sentinelpi/sentinelpi.yaml
 SENTINELPI_CONFIG=config/sentinelpi.yaml python -m sentinelpi.main
 ```
 
+`--check-config` validates operator-facing values such as CIDRs, ports, severity names,
+responder backends, and sensitivity profiles. It exits non-zero and prints every issue it
+finds instead of starting with a bad config.
+
 **Accessing the dashboard.** Authentication is always on. Set a stable token under
 `dashboard.access_token`; if you leave it blank, SentinelPi generates one per run and prints
 it to the log on startup:
@@ -379,6 +383,7 @@ Fixtures simulate real attack traffic so detectors are tested end-to-end:
 - [Troubleshooting](docs/troubleshooting.md)
 - [Security Considerations](docs/security_considerations.md)
 - [Feature Roadmap](docs/FEATURE_ROADMAP.md)
+- [Development Roadmap](docs/DEVELOPMENT_ROADMAP.md)
 
 ## Safety boundaries
 

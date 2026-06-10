@@ -3,6 +3,9 @@
 Goal: evolve SentinelPi from a strong single-host anomaly monitor into **the protector of the
 whole network** — broader visibility, smarter detection, real response, and a usable interface.
 
+For the current bug-focused review findings and implementation plan, see
+[Development Roadmap](DEVELOPMENT_ROADMAP.md).
+
 This roadmap is sequenced so each phase is independently shippable and builds on the last.
 Phase 0 is the prerequisite cleanup from `CODE_REVIEW.md`; don't build new detection on top of
 racy detectors.
@@ -202,8 +205,9 @@ Today SentinelPi sees its own host + the LAN it can sniff. To protect *the netwo
 - **Self-monitoring / watchdog:** detect if capture stopped, a thread died, or disk is full, and
   alert on *its own* degradation (a security tool that silently dies is worse than none).
 - **Config validation + `--check` mode** that lints config and tests notifiers/responders in dry-run.
-  _Partially shipped: `--check-config` validates the config and exits. Open: actually exercise
-  notifiers/responders in dry-run from `--check`._
+  _Partially shipped: `--check-config` now validates operator-facing values (CIDRs, ports,
+  severities, responder backends, sensitivity profiles) and exits non-zero on invalid config.
+  Open: actually exercise notifiers/responders in dry-run from `--check`._
 - **Backup/restore** of the baseline DB so a re-image doesn't reset months of learned behavior.
 - ✅ **Continuous integration.** _Shipped (2026-06-06): `.github/workflows/ci.yml` runs the full
   pytest suite on Python 3.11 + 3.12 for every push/PR (README badge reflects status). Open:
@@ -248,8 +252,8 @@ should follow the project's conventions (opt-in config, dry-run-safe, tests alon
 4. **CI hardening.** Add `ruff` lint + `mypy` jobs to `.github/workflows/ci.yml` (both already
    configured in `pyproject.toml`) and a coverage report. Low risk, tightens the safety net.
 
-5. **`--check` exercises notifiers/responders in dry-run.** Extend the existing `--check-config`
-   so it also fires each configured notifier and plans each responder in dry-run, reporting
+5. **`--check` exercises notifiers/responders in dry-run.** Extend the validated `--check-config`
+   path so it also fires each configured notifier and plans each responder in dry-run, reporting
    success/failure — catches misconfigured webhooks/SMTP/feeds before they matter.
 
 6. **Per-host profile dimensions beyond active-hours** (Phase 4): typical ports / bytes / peer-set,

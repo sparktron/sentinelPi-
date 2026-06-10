@@ -98,6 +98,16 @@ class AlertManager:
             self._notifiers.append(notifier)
         logger.debug("Registered notifier: %s", notifier.__class__.__name__)
 
+    def close_notifiers(self, timeout: float = 5.0) -> None:
+        """Stop and drain registered notifiers that own background resources."""
+        with self._lock:
+            notifiers = list(self._notifiers)
+        for notifier in notifiers:
+            try:
+                notifier.close(timeout=timeout)
+            except Exception as exc:
+                logger.warning("Notifier %s close failed: %s", notifier.__class__.__name__, exc)
+
     def set_responder_manager(self, responder_manager) -> None:
         """Wire in an active-response orchestrator (Phase 2). Optional."""
         self._responder_manager = responder_manager

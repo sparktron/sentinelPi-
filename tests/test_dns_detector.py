@@ -113,3 +113,27 @@ class TestDNSDetector:
             assert alert.description
             assert alert.recommended_action
             assert alert.dedup_key
+
+    def test_cooldown_map_prunes_expired_entries(self, dns_detector):
+        """DNS alert cooldown keys should not grow forever on long-running sensors."""
+        from sentinelpi.capture.packet_capture import CapturedDNS
+
+        now = clock.now()
+        old = now - timedelta(hours=2)
+        for i in range(2050):
+            dns_detector._last_alert[f"expired:{i}"] = old
+        dns_detector._last_alert["fresh"] = now
+
+        event = CapturedDNS(
+            timestamp=now,
+            src_ip="192.168.1.100",
+            dst_ip="8.8.8.8",
+            query_name="google.com",
+            query_type="A",
+            is_response=False,
+        )
+
+        dns_detector.process_event(event)
+
+        assert "fresh" in dns_detector._last_alert
+        assert not any(key.startswith("expired:") for key in dns_detector._last_alert)

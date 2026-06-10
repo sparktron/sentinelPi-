@@ -539,6 +539,17 @@ class Database:
         ).fetchone()
         return dict(row) if row else None
 
+    def get_hourly_baselines(self) -> List[Dict]:
+        """Return all persisted hourly connection baseline snapshots."""
+        conn = self._get_connection()
+        rows = conn.execute(
+            """
+            SELECT ip, hour_of_day, day_of_week, avg_conn, stddev_conn, sample_count, updated_at
+            FROM baseline_hourly
+            """
+        ).fetchall()
+        return [dict(r) for r in rows]
+
     def record_destination(self, src_ip: str, dst_ip: str, dst_port: int, protocol: str) -> None:
         """Record or increment a known (src→dst:port) destination."""
         now = clock.now().isoformat()
@@ -561,6 +572,17 @@ class Database:
             (src_ip, dst_ip, dst_port, protocol),
         ).fetchone()
         return row is not None and row["hit_count"] > 0
+
+    def get_baseline_destinations(self) -> List[Dict]:
+        """Return persisted destination baseline keys for startup rehydration."""
+        conn = self._get_connection()
+        rows = conn.execute(
+            """
+            SELECT src_ip, dst_ip, dst_port, protocol, hit_count, first_seen, last_seen
+            FROM baseline_destinations
+            """
+        ).fetchall()
+        return [dict(r) for r in rows]
 
     def record_dns_domain(self, domain: str) -> None:
         """Record a DNS domain as observed."""
@@ -646,7 +668,11 @@ class Database:
                               query_type: str, response_ip: str = "", is_nxdomain: bool = False) -> None:
         with self._conn() as conn:
             conn.execute(
-                "INSERT INTO dns_observations (timestamp, src_ip, query_name, query_type, response_ip, is_nxdomain) VALUES (?,?,?,?,?,?)",
+                """
+                INSERT INTO dns_observations
+                    (timestamp, src_ip, query_name, query_type, response_ip, is_nxdomain)
+                VALUES (?,?,?,?,?,?)
+                """,
                 (timestamp.isoformat(), src_ip, query_name, query_type, response_ip, int(is_nxdomain)),
             )
 

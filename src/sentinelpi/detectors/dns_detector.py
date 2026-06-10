@@ -72,6 +72,8 @@ class DNSDetector(BaseDetector):
             return []
 
         now = dns.timestamp
+        if len(self._last_alert) > 2048:
+            self._evict_expired_times(self._last_alert, 3600)
 
         # Record for baseline
         is_new = self.baseline.record_dns_domain(domain)

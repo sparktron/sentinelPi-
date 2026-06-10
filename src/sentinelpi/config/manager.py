@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import logging
 import os
+import ipaddress
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import List, Optional, Dict, Any
@@ -353,6 +355,17 @@ class Config:
     _source_path: str = ""
 
 
+@dataclass(frozen=True)
+class ConfigIssue:
+    """A single operator-facing configuration validation problem."""
+
+    path: str
+    message: str
+
+    def __str__(self) -> str:
+        return f"{self.path}: {self.message}"
+
+
 def _merge_dataclass_from_dict(dc_instance: Any, data: Dict[str, Any]) -> None:
     """
     Recursively populate a dataclass instance from a dict.
@@ -461,6 +474,178 @@ def _apply_sensitivity_profile(config: Config) -> None:
         t.traffic_spike_factor = 3.0
         t.lateral_movement_dest_threshold = 3
     # "balanced" uses the dataclass defaults
+
+
+def validate_config(config: Config) -> List[ConfigIssue]:
+    """Return all validation issues that should block daemon startup."""
+    issues: List[ConfigIssue] = []
+
+    def add(path: str, message: str) -> None:
+        issues.append(ConfigIssue(path, message))
+
+    def is_int(value: Any) -> bool:
+        return isinstance(value, int) and not isinstance(value, bool)
+
+    def check_port(path: str, value: Any, *, allow_zero: bool = False) -> None:
+        if not is_int(value):
+            add(path, "must be an integer")
+            return
+        lo = 0 if allow_zero else 1
+        if value < lo or value > 65535:
+            add(path, f"must be between {lo} and 65535")
+
+    def check_non_negative_int(path: str, value: Any) -> None:
+        if not is_int(value) or value < 0:
+            add(path, "must be a non-negative integer")
+
+    def check_positive_number(path: str, value: Any) -> None:
+        if isinstance(value, bool) or not isinstance(value, (int, float)) or value <= 0:
+            add(path, "must be a positive number")
+
+    def check_severity(path: str, value: Any) -> None:
+        valid = {"info", "low", "medium", "high", "critical"}
+        if value not in valid:
+            add(path, f"must be one of: {', '.join(sorted(valid))}")
+
+    def check_category_list(path: str, values: Any) -> None:
+        valid = {
+            "arp_anomaly", "new_device", "port_scan", "beacon", "connection_anomaly",
+            "dns_anomaly", "lateral_movement", "auth_anomaly", "traffic_spike",
+            "process_anomaly", "threat_intel", "honeypot", "incident", "system",
+        }
+        if not isinstance(values, list):
+            add(path, "must be a list")
+            return
+        for idx, value in enumerate(values):
+            if value not in valid:
+                add(f"{path}[{idx}]", f"must be one of: {', '.join(sorted(valid))}")
+
+    mac_re = re.compile(r"^[0-9a-fA-F]{2}(:[0-9a-fA-F]{2}){5}$")
+
+    if not isinstance(config.network.interfaces, list) or not config.network.interfaces:
+        add("network.interfaces", "must be a non-empty list")
+    else:
+        for idx, iface in enumerate(config.network.interfaces):
+            if not isinstance(iface, str) or not iface.strip():
+                add(f"network.interfaces[{idx}]", "must be a non-empty string")
+
+    if not isinstance(config.network.subnets, list) or not config.network.subnets:
+        add("network.subnets", "must be a non-empty list of CIDR networks")
+    else:
+        for idx, subnet in enumerate(config.network.subnets):
+            try:
+                ipaddress.ip_network(subnet, strict=False)
+            except (TypeError, ValueError):
+                add(f"network.subnets[{idx}]", "must be a valid CIDR network")
+
+    for path, ip in (
+        ("network.gateway_ip", config.network.gateway_ip),
+    ):
+        if ip:
+            try:
+                ipaddress.ip_address(ip)
+            except ValueError:
+                add(path, "must be a valid IP address")
+
+    if config.network.gateway_mac and not mac_re.match(config.network.gateway_mac):
+        add("network.gateway_mac", "must be a MAC address like aa:bb:cc:dd:ee:ff")
+
+    for idx, device in enumerate(config.trusted_devices):
+        if device.ip:
+            try:
+                ipaddress.ip_address(device.ip)
+            except ValueError:
+                add(f"trusted_devices[{idx}].ip", "must be a valid IP address")
+        if device.mac and not mac_re.match(device.mac):
+            add(f"trusted_devices[{idx}].mac", "must be a MAC address like aa:bb:cc:dd:ee:ff")
+
+    if not isinstance(config.dashboard.host, str) or not config.dashboard.host:
+        add("dashboard.host", "must be a non-empty string")
+    check_port("dashboard.port", config.dashboard.port)
+
+    if config.monitoring.sensitivity_profile not in {"conservative", "balanced", "aggressive"}:
+        add("monitoring.sensitivity_profile", "must be one of: conservative, balanced, aggressive")
+    check_non_negative_int("monitoring.active_discovery_interval_seconds",
+                           config.monitoring.active_discovery_interval_seconds)
+    check_non_negative_int("monitoring.baseline_learning_hours", config.monitoring.baseline_learning_hours)
+    check_non_negative_int("monitoring.active_hours_min_known", config.monitoring.active_hours_min_known)
+    for path, hour in (
+        ("monitoring.quiet_hours_start", config.monitoring.quiet_hours_start),
+        ("monitoring.quiet_hours_end", config.monitoring.quiet_hours_end),
+    ):
+        if not is_int(hour) or hour < 0 or hour > 23:
+            add(path, "must be an hour from 0 to 23")
+    if config.monitoring.dhcp_leases_format not in {"dnsmasq", "isc"}:
+        add("monitoring.dhcp_leases_format", "must be one of: dnsmasq, isc")
+    if not isinstance(config.monitoring.honeypot_ports, list):
+        add("monitoring.honeypot_ports", "must be a list")
+    else:
+        for idx, port in enumerate(config.monitoring.honeypot_ports):
+            check_port(f"monitoring.honeypot_ports[{idx}]", port)
+
+    t = config.thresholds
+    check_positive_number("thresholds.port_scan_ports_per_minute", t.port_scan_ports_per_minute)
+    check_positive_number("thresholds.connection_spike_factor", t.connection_spike_factor)
+    check_positive_number("thresholds.beacon_cv_threshold", t.beacon_cv_threshold)
+    check_positive_number("thresholds.beacon_min_intervals", t.beacon_min_intervals)
+    check_positive_number("thresholds.ssh_failures_threshold", t.ssh_failures_threshold)
+    check_positive_number("thresholds.ssh_failures_window_seconds", t.ssh_failures_window_seconds)
+    check_positive_number("thresholds.arp_mac_change_window_seconds", t.arp_mac_change_window_seconds)
+    check_positive_number("thresholds.traffic_spike_factor", t.traffic_spike_factor)
+    check_positive_number("thresholds.dns_entropy_threshold", t.dns_entropy_threshold)
+    check_positive_number("thresholds.lateral_movement_dest_threshold", t.lateral_movement_dest_threshold)
+
+    check_severity("notifications.email_min_severity", config.notifications.email_min_severity)
+    check_severity("notifications.webhook_min_severity", config.notifications.webhook_min_severity)
+    check_port("notifications.email_smtp_port", config.notifications.email_smtp_port)
+
+    check_non_negative_int("storage.retention_days", config.storage.retention_days)
+    check_non_negative_int("storage.vacuum_interval_seconds", config.storage.vacuum_interval_seconds)
+
+    check_non_negative_int("threat_intel.refresh_interval_hours", config.threat_intel.refresh_interval_hours)
+    check_non_negative_int("threat_intel.fetch_timeout_seconds", config.threat_intel.fetch_timeout_seconds)
+
+    if config.response.firewall_backend not in {"iptables", "nftables"}:
+        add("response.firewall_backend", "must be one of: iptables, nftables")
+    if config.response.dns_sinkhole_backend not in {"hosts", "pihole", "unbound"}:
+        add("response.dns_sinkhole_backend", "must be one of: hosts, pihole, unbound")
+    if config.response.arp_restore_backend not in {"arp", "ip"}:
+        add("response.arp_restore_backend", "must be one of: arp, ip")
+    check_severity("response.auto_block_min_severity", config.response.auto_block_min_severity)
+    check_severity("response.sinkhole_min_severity", config.response.sinkhole_min_severity)
+    check_severity("response.arp_restore_min_severity", config.response.arp_restore_min_severity)
+    check_severity("response.killswitch_min_severity", config.response.killswitch_min_severity)
+    check_non_negative_int("response.block_duration_seconds", config.response.block_duration_seconds)
+    check_category_list("response.auto_execute_categories", config.response.auto_execute_categories)
+    check_category_list("response.auto_block_categories", config.response.auto_block_categories)
+    check_category_list("response.sinkhole_categories", config.response.sinkhole_categories)
+    check_category_list("response.killswitch_categories", config.response.killswitch_categories)
+
+    if config.cluster.role not in {"standalone", "sensor", "collector"}:
+        add("cluster.role", "must be one of: standalone, sensor, collector")
+    check_severity("cluster.forward_min_severity", config.cluster.forward_min_severity)
+
+    check_non_negative_int("correlation.window_seconds", config.correlation.window_seconds)
+    check_non_negative_int("correlation.min_sensors", config.correlation.min_sensors)
+    check_non_negative_int("correlation.min_targets", config.correlation.min_targets)
+    check_non_negative_int("correlation.cooldown_seconds", config.correlation.cooldown_seconds)
+
+    check_non_negative_int("flow.conntrack_interval_seconds", config.flow.conntrack_interval_seconds)
+    check_port("flow.netflow_port", config.flow.netflow_port)
+    check_non_negative_int("flow.filterlog_interval_seconds", config.flow.filterlog_interval_seconds)
+
+    for idx, ip in enumerate(config.whitelist_ips):
+        try:
+            ipaddress.ip_address(ip)
+        except ValueError:
+            add(f"whitelist_ips[{idx}]", "must be a valid IP address")
+    if not isinstance(config.whitelist_ports, list):
+        add("whitelist_ports", "must be a list")
+    else:
+        for idx, port in enumerate(config.whitelist_ports):
+            check_port(f"whitelist_ports[{idx}]", port)
+
+    return issues
 
 
 def get_trusted_ips(config: Config) -> set:

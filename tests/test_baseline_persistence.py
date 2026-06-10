@@ -11,8 +11,10 @@ H4: update_hourly_baseline used a biased EWMA recurrence (mislabeled "Welford")
 from __future__ import annotations
 
 import statistics
+from datetime import datetime, timezone
 
-from sentinelpi.baseline.engine import RunningStats
+from sentinelpi.baseline.engine import BaselineEngine, RunningStats
+from sentinelpi.utils import clock
 
 
 def _truth(values):
@@ -57,3 +59,36 @@ def test_upsert_overwrites_not_accumulates(db):
     assert row["avg_conn"] == 8.0
     assert row["stddev_conn"] == 2.0
     assert row["sample_count"] == 20
+
+
+def test_destination_baseline_rehydrates_after_restart(config, db):
+    first = BaselineEngine(config, db)
+    assert first.record_destination("192.168.1.5", "203.0.113.10", 4444, "tcp")
+
+    restarted = BaselineEngine(config, db)
+
+    assert restarted.is_known_destination("192.168.1.5", "203.0.113.10", 4444, "tcp")
+    assert not restarted.record_destination("192.168.1.5", "203.0.113.10", 4444, "tcp")
+
+
+def test_hourly_connection_baseline_rehydrates_after_restart(config, db):
+    instant = datetime(2026, 6, 10, 14, 0, tzinfo=timezone.utc)
+    stats = RunningStats()
+    for value in [8, 9, 10, 10, 11, 12, 9, 10, 11, 10]:
+        stats.update(float(value))
+
+    db.update_hourly_baseline(
+        "192.168.1.5",
+        hour_of_day=instant.hour,
+        day_of_week=instant.weekday(),
+        avg_conn=stats.mean,
+        stddev_conn=stats.stddev,
+        sample_count=stats.n,
+    )
+
+    with clock.use_clock(clock.FixedClock(instant)):
+        restarted = BaselineEngine(config, db)
+        is_spike, z_score = restarted.check_connection_spike("192.168.1.5", 80)
+
+    assert is_spike
+    assert z_score > 0
