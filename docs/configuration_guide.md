@@ -76,9 +76,10 @@ monitoring:
 ### Self-Monitoring Watchdog
 
 The watchdog raises `SYSTEM` alerts when SentinelPi's own runtime health degrades:
-managed worker threads stop, the capture queue approaches capacity, or the database
-volume falls below the configured free-space floor. The latest snapshot is also
-returned from `/api/status`.
+managed worker threads stop, packet/flow events stop arriving while event sources
+are active, threat-intel refresh fails or goes stale, the capture queue approaches
+capacity, or the database volume falls below the configured free-space floor. The
+latest snapshot is also returned from `/api/status`.
 
 ```yaml
 monitoring:
@@ -86,6 +87,8 @@ monitoring:
   self_monitoring_interval_seconds: 60
   self_monitoring_queue_warn_ratio: 0.80
   self_monitoring_disk_free_min_mb: 512
+  self_monitoring_capture_stale_seconds: 300
+  self_monitoring_threat_intel_stale_multiplier: 2.0
 ```
 
 ## Dashboard

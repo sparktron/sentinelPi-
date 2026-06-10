@@ -394,6 +394,8 @@ class SentinelPi:
             while not self._stop_event.is_set():
                 try:
                     event = self._capture_queue.get(timeout=1.0)
+                    if self._watchdog is not None:
+                        self._watchdog.record_event()
                     for det in event_detectors:
                         try:
                             alerts = det.process_event(event)
@@ -411,6 +413,8 @@ class SentinelPi:
         self._threads.append(router_thread)
         router_thread.start()
         self._event_router_started = True
+        if self._watchdog is not None:
+            self._watchdog.set_event_sources_active(True)
 
     def _start_flow_ingest(self) -> None:
         """
@@ -508,12 +512,16 @@ class SentinelPi:
             while not self._stop_event.is_set():
                 try:
                     self._intel_service.refresh()
+                    if self._watchdog is not None:
+                        self._watchdog.record_threat_intel_refresh(success=True)
                     logger.info(
                         "Threat intel active: %d indicators loaded.",
                         self._intel_service.indicator_count,
                     )
                 except Exception as exc:
                     logger.error("Threat-intel refresh failed: %s", exc)
+                    if self._watchdog is not None:
+                        self._watchdog.record_threat_intel_refresh(success=False, error=str(exc))
                 self._stop_event.wait(timeout=interval)
             logger.info("Threat-intel refresh thread stopped.")
 
@@ -628,6 +636,7 @@ class SentinelPi:
 
         logger.info("Starting web dashboard...")
         self._watchdog = OperationalWatchdog(self.config, self._capture_queue, self._threads)
+        self._watchdog.set_event_sources_active(self._event_router_started)
         self._start_dashboard()
 
         self._start_threat_intel()

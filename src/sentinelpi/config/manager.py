@@ -196,6 +196,8 @@ class MonitoringConfig:
     self_monitoring_interval_seconds: int = 60
     self_monitoring_queue_warn_ratio: float = 0.80
     self_monitoring_disk_free_min_mb: int = 512
+    self_monitoring_capture_stale_seconds: int = 300
+    self_monitoring_threat_intel_stale_multiplier: float = 2.0
 
 
 @dataclass
@@ -587,6 +589,10 @@ def validate_config(config: Config) -> List[ConfigIssue]:
         add("monitoring.self_monitoring_queue_warn_ratio", "must be a number from greater than 0 through 1")
     check_non_negative_int("monitoring.self_monitoring_disk_free_min_mb",
                            config.monitoring.self_monitoring_disk_free_min_mb)
+    check_positive_number("monitoring.self_monitoring_capture_stale_seconds",
+                          config.monitoring.self_monitoring_capture_stale_seconds)
+    check_positive_number("monitoring.self_monitoring_threat_intel_stale_multiplier",
+                          config.monitoring.self_monitoring_threat_intel_stale_multiplier)
     for path, hour in (
         ("monitoring.quiet_hours_start", config.monitoring.quiet_hours_start),
         ("monitoring.quiet_hours_end", config.monitoring.quiet_hours_end),

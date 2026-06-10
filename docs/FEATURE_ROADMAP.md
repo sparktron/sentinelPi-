@@ -202,9 +202,9 @@ Today SentinelPi sees its own host + the LAN it can sniff. To protect *the netwo
 ## Phase 6 — Trust, safety, and operability
 - **Tamper-evident alert log** (hash-chained) so an attacker who lands on the Pi can't silently
   delete evidence; optionally ship alerts off-box immediately.
-- ✅ **Self-monitoring / watchdog.** _Partially shipped: raises SYSTEM alerts for dead managed
-  worker threads, high capture-queue usage, and low disk space, and exposes the latest snapshot
-  in `/api/status`. Open: stalled-capture timing and threat-feed refresh health._
+- ✅ **Self-monitoring / watchdog.** _Shipped: raises SYSTEM alerts for dead managed worker
+  threads, stale packet/flow event streams, threat-intel refresh failures/staleness, high
+  capture-queue usage, and low disk space; exposes the latest snapshot in `/api/status`._
 - **Config validation + `--check` mode** that lints config and tests notifiers/responders in dry-run.
   _Partially shipped: `--check-config` now validates operator-facing values (CIDRs, ports,
   severities, responder backends, sensitivity profiles) and exits non-zero on invalid config.
@@ -240,23 +240,19 @@ should follow the project's conventions (opt-in config, dry-run-safe, tests alon
    registry. Start with ntfy (simplest: HTTP POST, action buttons) before Telegram's bot API.
    Scope: new notifier + config block + delivery of the action id + tests.
 
-2. **Watchdog follow-ups.** The first watchdog slice is shipped (dead worker threads,
-   high capture queue, low disk, `/api/status`). Add stalled-capture timing and
-   threat-feed refresh health next.
+2. **CI hardening.** Add `ruff` lint + `mypy` jobs to `.github/workflows/ci.yml` (both already
+   configured in `pyproject.toml`) and a coverage report. Low risk, tightens the safety net.
 
 3. **Single-host incident engine (Phase 4 sequence/correlation).** The cross-sensor correlator
    exists; this is the per-host story: chain "new device → port scan → admin connection" into one
    `INCIDENT` with a timeline instead of N alerts. Likely a sibling to `alerts/correlator.py`
    keyed on actor + ordered alert categories within a window.
 
-4. **CI hardening.** Add `ruff` lint + `mypy` jobs to `.github/workflows/ci.yml` (both already
-   configured in `pyproject.toml`) and a coverage report. Low risk, tightens the safety net.
-
-5. **`--check` exercises notifiers/responders in dry-run.** Extend the validated `--check-config`
+4. **`--check` exercises notifiers/responders in dry-run.** Extend the validated `--check-config`
    path so it also fires each configured notifier and plans each responder in dry-run, reporting
    success/failure — catches misconfigured webhooks/SMTP/feeds before they matter.
 
-6. **Per-host profile dimensions beyond active-hours** (Phase 4): typical ports / bytes / peer-set,
+5. **Per-host profile dimensions beyond active-hours** (Phase 4): typical ports / bytes / peer-set,
    alerting on deviation from the host's *own* learned profile. Extends
    `detectors/active_hours_detector.py`'s persistence pattern (new schema-versioned tables).
 

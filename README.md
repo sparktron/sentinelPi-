@@ -236,7 +236,7 @@ with a safe default — you only configure what differs for your network.
 | `trusted_devices` | Your known devices (suppresses new-device alerts) |
 | `monitoring.sensitivity_profile` | `conservative`, `balanced`, or `aggressive` |
 | `monitoring.packet_capture_enabled` | `true` for full capture, `false` for `/proc`-only (no root) |
-| `monitoring.self_monitoring_*` | Watchdog checks for worker death, queue saturation, and low disk |
+| `monitoring.self_monitoring_*` | Watchdog checks for worker death, stale capture, threat-intel refresh, queue saturation, and low disk |
 | `dashboard` | Host/port and access token |
 | `notifications` | Email, webhook, and daily/weekly report settings |
 | `threat_intel` | Enable blocklist feeds and matching |
