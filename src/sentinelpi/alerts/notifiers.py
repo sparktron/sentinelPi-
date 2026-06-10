@@ -21,11 +21,9 @@ import smtplib
 import socket
 import threading
 from abc import ABC, abstractmethod
-from datetime import datetime
 from email.mime.text import MIMEText
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
-from typing import Optional
 
 from ..models import Alert, Severity
 from ..config.manager import Config

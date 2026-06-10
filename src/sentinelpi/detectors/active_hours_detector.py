@@ -15,7 +15,7 @@ survives restarts.
 from __future__ import annotations
 
 import logging
-from typing import Dict, List, Optional, Set
+from typing import Dict, List, Set
 
 from .base import BaseDetector
 from ..capture.packet_capture import CapturedConnection

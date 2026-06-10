@@ -22,7 +22,7 @@ import logging
 import threading
 from datetime import datetime, timedelta
 from ..utils import clock
-from typing import Callable, Dict, List, Optional
+from typing import Dict, List
 
 from ..models import Alert, AlertCategory, AlertStatus, Severity
 from ..storage.database import Database

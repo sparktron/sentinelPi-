@@ -174,6 +174,10 @@ source venv/bin/activate
 # Run the test suite
 python -m pytest tests/ -v
 
+# Run the local CI checks
+python -m compileall -q src tests
+ruff check src tests
+
 # Validate a config and start monitoring (sudo only if packet capture is enabled)
 SENTINELPI_CONFIG=config/sentinelpi.yaml python -m sentinelpi.main --check-config
 SENTINELPI_CONFIG=config/sentinelpi.yaml python -m sentinelpi.main
@@ -363,6 +367,8 @@ Go beyond a single host:
 ```bash
 source venv/bin/activate
 python -m pytest tests/ -v
+python -m compileall -q src tests
+ruff check src tests
 
 # With coverage
 python -m pytest tests/ --cov=sentinelpi --cov-report=term-missing

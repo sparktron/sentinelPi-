@@ -39,6 +39,7 @@ geo = ["maxminddb>=2.4.0"]
 dev = [
     "pytest>=7.4.0",
     "pytest-cov>=4.1.0",
+    "ruff>=0.15.0",
 ]
 
 [project.scripts]
@@ -55,3 +56,6 @@ addopts = "-v --tb=short"
 [tool.ruff]
 target-version = "py311"
 line-length = 120
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*.py" = ["F401", "F841"]

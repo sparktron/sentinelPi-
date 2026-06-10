@@ -15,9 +15,9 @@ from __future__ import annotations
 
 import logging
 from collections import defaultdict, deque
-from datetime import datetime, timedelta
+from datetime import timedelta
 from ..utils import clock
-from typing import Dict, List, Optional, Set, Tuple
+from typing import Dict, List, Optional, Set
 
 from .base import BaseDetector
 from ..capture.packet_capture import CapturedARP
@@ -112,8 +112,6 @@ class ARPDetector(BaseDetector):
             return []
 
         known_mac = self._ip_to_mac.get(arp.src_ip)
-        known_ip = self._mac_to_ip.get(arp.src_mac)
-
         # --- MAC conflict: different MAC claiming to be a known IP ---
         if known_mac and known_mac != arp.src_mac:
             self._conflicts[arp.src_ip].add(arp.src_mac)

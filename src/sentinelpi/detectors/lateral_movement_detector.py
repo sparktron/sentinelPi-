@@ -23,7 +23,6 @@ from .base import BaseDetector
 from ..capture.packet_capture import CapturedConnection
 from ..capture.proc_reader import read_tcp_connections
 from ..models import Alert, AlertCategory, Severity
-from ..utils.network import is_private_ip
 
 logger = logging.getLogger(__name__)
 

@@ -25,10 +25,9 @@ from __future__ import annotations
 
 import logging
 import threading
-from collections import defaultdict, deque
-from datetime import datetime, timedelta
+from datetime import datetime
 from ..utils import clock
-from typing import Dict, List, Optional, Set, Tuple
+from typing import Dict, Set, Tuple
 
 from ..config.manager import Config
 from ..storage.database import Database

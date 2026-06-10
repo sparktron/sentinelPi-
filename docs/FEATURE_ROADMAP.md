@@ -210,9 +210,9 @@ Today SentinelPi sees its own host + the LAN it can sniff. To protect *the netwo
   severities, responder backends, sensitivity profiles) and exits non-zero on invalid config.
   Open: actually exercise notifiers/responders in dry-run from `--check`._
 - **Backup/restore** of the baseline DB so a re-image doesn't reset months of learned behavior.
-- ✅ **Continuous integration.** _Shipped (2026-06-06): `.github/workflows/ci.yml` runs the full
-  pytest suite on Python 3.11 + 3.12 for every push/PR (README badge reflects status). Open:
-  add `ruff` lint + `mypy` (config already present in `pyproject.toml`) and coverage upload._
+- ✅ **Continuous integration.** _Shipped: `.github/workflows/ci.yml` runs compile checks, ruff,
+  coverage-enabled pytest on Python 3.11 + 3.12 for every push/PR, and emits coverage XML. Open:
+  mypy once third-party stubs and annotation gaps are cleaned up._
 
 ---
 
@@ -240,13 +240,13 @@ should follow the project's conventions (opt-in config, dry-run-safe, tests alon
    registry. Start with ntfy (simplest: HTTP POST, action buttons) before Telegram's bot API.
    Scope: new notifier + config block + delivery of the action id + tests.
 
-2. **CI hardening.** Add `ruff` lint + `mypy` jobs to `.github/workflows/ci.yml` (both already
-   configured in `pyproject.toml`) and a coverage report. Low risk, tightens the safety net.
-
-3. **Single-host incident engine (Phase 4 sequence/correlation).** The cross-sensor correlator
+2. **Single-host incident engine (Phase 4 sequence/correlation).** The cross-sensor correlator
    exists; this is the per-host story: chain "new device → port scan → admin connection" into one
    `INCIDENT` with a timeline instead of N alerts. Likely a sibling to `alerts/correlator.py`
    keyed on actor + ordered alert categories within a window.
+
+3. **Mypy readiness.** Install or configure third-party stubs, tighten the existing annotation
+   gaps, and only then add a mypy CI gate.
 
 4. **`--check` exercises notifiers/responders in dry-run.** Extend the validated `--check-config`
    path so it also fires each configured notifier and plans each responder in dry-run, reporting

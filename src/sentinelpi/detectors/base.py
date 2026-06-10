@@ -20,7 +20,7 @@ import threading
 from abc import ABC
 from datetime import datetime, timedelta
 from ..utils import clock
-from typing import Dict, List, TYPE_CHECKING
+from typing import Any, Dict, List, TYPE_CHECKING
 
 if TYPE_CHECKING:
     from ..models import Alert
@@ -118,7 +118,7 @@ class BaseDetector(ABC):
         return len(stale)
 
     @staticmethod
-    def _evict_idle_deques(deque_map: Dict[object, "deque"], max_age_seconds: float) -> int:
+    def _evict_idle_deques(deque_map: Dict[object, Any], max_age_seconds: float) -> int:
         """
         Drop keys from a {key: deque} map that are empty or whose newest entry is
         older than max_age (the flow/scan went idle).

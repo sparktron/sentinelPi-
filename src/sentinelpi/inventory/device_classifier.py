@@ -19,7 +19,7 @@ extending classify_device — the call sites won't change.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import List, Optional, Tuple
+from typing import List, Tuple
 
 # Coarse device types.
 ROUTER = "router"

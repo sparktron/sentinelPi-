@@ -21,19 +21,19 @@ import logging
 import queue
 import threading
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime
 from ..utils import clock
-from typing import Callable, List, Optional
+from typing import Any, List, Optional
 
 logger = logging.getLogger(__name__)
 
 # Try to import scapy — it's an optional dependency for packet capture.
 # The tool still works without it (using proc_reader instead).
 try:
-    from scapy.layers.l2 import ARP, Ether
-    from scapy.layers.inet import IP, TCP, UDP, ICMP
-    from scapy.layers.dns import DNS, DNSQR
+    from scapy.layers.l2 import ARP
+    from scapy.layers.inet import IP, TCP, UDP
+    from scapy.layers.dns import DNS
     from scapy.sendrecv import AsyncSniffer
     SCAPY_AVAILABLE = True
 except ImportError:
@@ -221,7 +221,7 @@ class PacketCapture:
                     except Exception as exc:
                         logger.debug("Error stopping sniffer during cleanup: %s", exc)
 
-    def _handle_packet(self, pkt: "scapy.packet.Packet") -> None:
+    def _handle_packet(self, pkt: Any) -> None:
         """
         Callback invoked for each captured packet.
 
@@ -245,7 +245,7 @@ class PacketCapture:
         except Exception as exc:
             logger.debug("Error parsing packet: %s", exc)
 
-    def _parse_arp(self, pkt: "scapy.packet.Packet", now: datetime) -> Optional[CapturedARP]:
+    def _parse_arp(self, pkt: Any, now: datetime) -> Optional[CapturedARP]:
         arp = pkt[ARP]
         return CapturedARP(
             timestamp=now,
@@ -256,7 +256,7 @@ class PacketCapture:
             dst_ip=arp.pdst,
         )
 
-    def _parse_dns(self, pkt: "scapy.packet.Packet", now: datetime) -> Optional[CapturedDNS]:
+    def _parse_dns(self, pkt: Any, now: datetime) -> Optional[CapturedDNS]:
         dns = pkt[DNS]
         ip = pkt[IP]
 
@@ -295,7 +295,7 @@ class PacketCapture:
             is_nxdomain=is_nxdomain,
         )
 
-    def _parse_connection(self, pkt: "scapy.packet.Packet", now: datetime) -> Optional[CapturedConnection]:
+    def _parse_connection(self, pkt: Any, now: datetime) -> Optional[CapturedConnection]:
         ip = pkt[IP]
         proto = "tcp"
         flags = ""

@@ -31,7 +31,6 @@ from __future__ import annotations
 
 import logging
 import logging.handlers
-import os
 import queue
 import signal
 import sys

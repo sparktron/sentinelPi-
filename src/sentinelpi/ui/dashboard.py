@@ -25,11 +25,10 @@ from __future__ import annotations
 
 import hmac
 import ipaddress
-import json
 import logging
 import secrets
 import threading
-from datetime import datetime, timedelta
+from datetime import timedelta
 from ..utils import clock
 from functools import wraps
 from typing import TYPE_CHECKING, Optional
@@ -40,7 +39,7 @@ logger = logging.getLogger(__name__)
 
 try:
     from flask import (
-        Flask, jsonify, render_template, request, abort, Response,
+        Flask, jsonify, render_template, request, abort,
         session, redirect, url_for,
     )
     FLASK_AVAILABLE = True

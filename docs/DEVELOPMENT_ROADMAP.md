@@ -19,8 +19,9 @@ important hardening or usability work.
 Status update 2026-06-10: Phase 1 items 1, 2, 3, 5, and 6 are complete with regression tests.
 Phase 2 items 4 and 7 are also complete. The watchdog slice is shipped: dead worker threads,
 stale packet/flow event streams, threat-intel refresh failures/staleness, high capture-queue usage,
-low disk space, and `/api/status` health exposure. Next implementation pass should move into CI
-hardening, then incident UX.
+low disk space, and `/api/status` health exposure. CI now runs compile checks, ruff, and
+coverage-enabled pytest. Next implementation pass should move into incident UX, then mypy
+readiness.
 
 ### Critical
 
@@ -125,7 +126,7 @@ hardening, then incident UX.
    - Prune `_last_alert` opportunistically in `_analyze_dns()` with the base eviction helper.
    - Add a memory-bounding test specific to `DNSDetector`.
 
-8. **CI runs tests but not lint, packaging, or coverage gates.**
+8. **CI runs tests but not lint, packaging, or coverage gates.** **Status: partially fixed.**
 
    The repo has ruff settings and optional coverage dependency, but CI only installs dependencies
    and runs pytest. This misses import/package regressions and low-cost style failures.
@@ -137,6 +138,9 @@ hardening, then incident UX.
    - Add `ruff check src tests` once ruff is enabled in dev dependencies.
    - Add `python -m build` or at least an editable install smoke test.
    - Keep coverage informational until thresholds are stable.
+
+   Status update: compileall, ruff, and coverage XML are now wired into CI. Packaging smoke tests
+   and mypy readiness remain open.
 
 ## Implementation Roadmap
 

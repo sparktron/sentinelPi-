@@ -16,14 +16,13 @@ from __future__ import annotations
 
 import logging
 import threading
-import time
 from collections import defaultdict, deque
 from datetime import datetime, timedelta
 from ..utils import clock
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional
 
 from ..config.manager import Config, get_trusted_ips, get_trusted_macs
-from ..models import Alert, AlertCategory, AlertStatus, Device, Severity
+from ..models import Alert, AlertCategory, Device, Severity
 from ..capture.proc_reader import ARPEntry, read_arp_table
 from ..storage.database import Database
 from ..utils.network import mac_to_vendor, normalize_mac, reverse_dns

@@ -23,7 +23,7 @@ from typing import Dict, List, Optional
 from .base import BaseDetector
 from ..capture.packet_capture import CapturedDNS
 from ..models import Alert, AlertCategory, Severity
-from ..utils.network import domain_entropy, count_subdomains, is_suspicious_tld
+from ..utils.network import domain_entropy, is_suspicious_tld
 
 logger = logging.getLogger(__name__)
 
@@ -121,12 +121,9 @@ class DNSDetector(BaseDetector):
 
     def _check_entropy(self, domain: str, src_ip: str, now: datetime) -> Optional[Alert]:
         """Flag high-entropy domain names that resemble DGA output."""
-        # Check if the top-level + second-level domain is a known CDN
         parts = domain.split(".")
-        if len(parts) >= 2:
-            tld2 = ".".join(parts[-2:])
-            if any(domain.endswith(w) for w in HIGH_ENTROPY_WHITELIST):
-                return None
+        if len(parts) >= 2 and any(domain.endswith(w) for w in HIGH_ENTROPY_WHITELIST):
+            return None
 
         entropy = domain_entropy(domain)
         threshold = self.config.thresholds.dns_entropy_threshold
@@ -195,7 +192,7 @@ class DNSDetector(BaseDetector):
                 severity=Severity.HIGH,
                 category=AlertCategory.DNS_ANOMALY,
                 affected_host=src_ip,
-                title=f"Possible DNS tunneling: very long subdomain label",
+                title="Possible DNS tunneling: very long subdomain label",
                 description=(
                     f"{src_ip} queried a domain with a {len(subdomain)}-character subdomain label "
                     f"('{subdomain[:30]}...'). DNS tunneling tools (iodine, dnscat2) encode data "

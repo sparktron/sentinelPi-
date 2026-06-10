@@ -14,12 +14,12 @@ from __future__ import annotations
 
 import logging
 from collections import defaultdict, deque
-from datetime import datetime, timedelta
+from datetime import datetime
 from ..utils import clock
-from typing import Dict, List, Optional, Set, Tuple
+from typing import Dict, List, Optional, Set
 
 from .base import BaseDetector
-from ..capture.proc_reader import read_tcp_connections, read_listening_ports
+from ..capture.proc_reader import ProcConnection, read_tcp_connections, read_listening_ports
 from ..models import Alert, AlertCategory, Severity
 from ..utils.network import is_private_ip
 from ..utils.geo import lookup_country
@@ -213,8 +213,6 @@ class ConnectionDetector(BaseDetector):
                 self.baseline.record_listening_port(conn.local_port)
             self._listening_initialized = True
             return []
-
-        current_ports = {conn.local_port for conn in listening}
 
         # New ports
         for conn in listening:

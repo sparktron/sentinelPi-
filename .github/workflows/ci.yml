@@ -35,5 +35,11 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt -r requirements-dev.txt
 
+      - name: Compile source and tests
+        run: python -m compileall -q src tests
+
+      - name: Lint
+        run: ruff check src tests
+
       - name: Run test suite
-        run: pytest tests/ -q
+        run: pytest tests/ -q --cov=sentinelpi --cov-report=term-missing --cov-report=xml

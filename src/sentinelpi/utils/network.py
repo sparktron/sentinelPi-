@@ -9,10 +9,8 @@ from __future__ import annotations
 import ipaddress
 import re
 import socket
-import struct
 from concurrent.futures import ThreadPoolExecutor
 from concurrent.futures import TimeoutError as FuturesTimeout
-from typing import Optional
 
 # Shared pool for bounded, thread-safe reverse-DNS lookups. A small pool is
 # plenty — lookups are infrequent (per newly-seen device) and short-lived.

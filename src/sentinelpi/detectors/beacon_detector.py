@@ -29,7 +29,7 @@ import math
 from collections import defaultdict, deque
 from datetime import datetime, timedelta
 from ..utils import clock
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Tuple
 
 from .base import BaseDetector
 from ..capture.packet_capture import CapturedConnection
