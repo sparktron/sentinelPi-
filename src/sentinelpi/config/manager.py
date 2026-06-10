@@ -89,6 +89,20 @@ class NotificationConfig:
     webhook_min_severity: str = "medium"
     webhook_secret: str = ""
 
+    # ntfy actionable notifier: pushes alerts and, for responder actions awaiting
+    # approval, a notification with Approve/Reject buttons that call the dashboard
+    # response API. Build on ntfy.sh or a self-hosted server.
+    ntfy_enabled: bool = False
+    ntfy_server: str = "https://ntfy.sh"
+    ntfy_topic: str = ""
+    ntfy_token: str = ""              # auth to the ntfy server itself (optional)
+    ntfy_min_severity: str = "high"
+    # Base URL the Approve/Reject buttons call back to — the SentinelPi dashboard
+    # as reachable from your phone (e.g. https://pi.lan:8888) — and the bearer
+    # token for its API. Action buttons are only attached when both are set.
+    ntfy_dashboard_url: str = ""
+    ntfy_dashboard_token: str = ""
+
 
 @dataclass
 class DashboardConfig:
@@ -621,6 +635,7 @@ def validate_config(config: Config) -> List[ConfigIssue]:
 
     check_severity("notifications.email_min_severity", config.notifications.email_min_severity)
     check_severity("notifications.webhook_min_severity", config.notifications.webhook_min_severity)
+    check_severity("notifications.ntfy_min_severity", config.notifications.ntfy_min_severity)
     check_port("notifications.email_smtp_port", config.notifications.email_smtp_port)
 
     check_non_negative_int("storage.retention_days", config.storage.retention_days)

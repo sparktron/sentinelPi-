@@ -142,6 +142,32 @@ The webhook payload is a JSON POST:
 }
 ```
 
+### ntfy (actionable push with Approve/Reject)
+
+[ntfy](https://ntfy.sh) delivers push notifications to your phone. Beyond plain alerts, SentinelPi
+attaches **Approve/Reject buttons** to notifications for responder actions awaiting approval, so you
+can authorize a block or sinkhole from the lock screen without opening the dashboard.
+
+```yaml
+notifications:
+  ntfy_enabled: true
+  ntfy_server: "https://ntfy.sh"          # or your self-hosted server
+  ntfy_topic: "sentinelpi-pick-something-unguessable"
+  ntfy_token: ""                          # bearer auth to the ntfy server (optional)
+  ntfy_min_severity: high
+  # Where the Approve/Reject buttons call back to — the dashboard as reachable
+  # from your phone — and its API token. Buttons appear ONLY when both are set.
+  ntfy_dashboard_url: "https://pi.lan:8888"
+  ntfy_dashboard_token: "<dashboard.access_token>"
+```
+
+Subscribe to the topic in the ntfy mobile app. When active response is **armed with approval
+required** (`response.enabled: true`, `response.dry_run: false`, `response.require_approval: true`),
+each pending action arrives as a notification whose Approve/Reject buttons POST to
+`/api/responses/<id>/approve` and `/reject` with the dashboard bearer token. Because the buttons hit
+the dashboard API, `ntfy_dashboard_url` must be reachable from the phone (e.g. over your LAN, VPN, or
+Tailscale) and should be HTTPS so the token isn't sent in the clear.
+
 ### Email
 
 ```yaml

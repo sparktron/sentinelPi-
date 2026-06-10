@@ -199,7 +199,9 @@ Exit criteria:
 
 ### Phase 4: Usability And Integrations
 
-- Add ntfy actionable notifications for pending responder approvals.
+- ✅ Add ntfy actionable notifications for pending responder approvals. _Shipped (2026-06-10):
+  `NtfyNotifier` pushes alerts and Approve/Reject action buttons that call the dashboard response
+  API; wired via `ResponderManager.set_pending_notifier`._
 - Add dashboard live updates with server-sent events or WebSockets.
 - Add per-host drill-down pages: timeline, known destinations, DNS history, device identity, and
   responder history.
@@ -219,8 +221,8 @@ Exit criteria:
   top peers, top DNS domains, open ports, and recent responder actions.
 - **Incident timeline engine:** combine related alerts into one narrative with first-seen, escalation,
   affected hosts, and recommended next action.
-- **Actionable ntfy notifier:** send pending response actions with approve/reject buttons that call
-  existing response endpoints.
+- **Actionable ntfy notifier:** ✅ shipped (2026-06-10) — `NtfyNotifier` sends pending response
+  actions with approve/reject buttons that call the existing response endpoints.
 - **Config doctor:** expand `--check-config` into a preflight that validates config, probes optional
   files/binaries, tests notifier credentials in dry-run mode, and prints degraded features.
 - **Baseline backup/restore:** export/import learned DNS, destinations, active hours, countries, and

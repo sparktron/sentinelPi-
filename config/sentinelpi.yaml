@@ -242,6 +242,20 @@ notifications:
   webhook_min_severity: medium
   webhook_secret: ""   # Added as X-SentinelPi-Secret header
 
+  # ntfy actionable notifier: pushes alerts and, for responder actions awaiting
+  # approval, a notification with Approve/Reject buttons that call the dashboard
+  # response API directly from your phone. Works with ntfy.sh or self-hosted.
+  ntfy_enabled: false
+  ntfy_server: "https://ntfy.sh"
+  ntfy_topic: ""                 # pick a hard-to-guess topic name
+  ntfy_token: ""                 # auth to the ntfy server itself (optional)
+  ntfy_min_severity: high
+  # Dashboard URL the Approve/Reject buttons call back to (reachable from your
+  # phone, e.g. https://pi.lan:8888) and its API bearer token. Buttons are only
+  # attached when BOTH are set; otherwise ntfy just delivers the notification.
+  ntfy_dashboard_url: ""
+  ntfy_dashboard_token: ""
+
 # =============================================================================
 # REPORTING
 # =============================================================================

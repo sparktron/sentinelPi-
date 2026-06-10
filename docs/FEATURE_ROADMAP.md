@@ -98,8 +98,12 @@ Move from detect-only to detect-and-respond. **Gate every action behind explicit
     `ui/templates/dashboard.html` lists `/api/responses/recent` with Approve/Reject buttons on
     pending actions; hidden when no responder manager is wired (routes 404). Verified end-to-end
     against the real waitress-served app. Render tests in `test_dashboard_render.py`._
-  - **Follow-up (open):** surface approve/reject in a notifier (Telegram/Slack/ntfy actionable
-    button) so you can confirm from your phone without opening the dashboard — see Phase 5.
+  - ✅ **Follow-up:** surface approve/reject in a notifier so you can confirm from your phone
+    without opening the dashboard. _Shipped (2026-06-10): `NtfyNotifier` in `alerts/notifiers.py`
+    pushes alerts and, when a responder action is queued for approval, an actionable notification
+    with Approve/Reject buttons that POST to `/api/responses/<id>/{approve,reject}` with the
+    dashboard bearer token. Wired via `ResponderManager.set_pending_notifier`; gated by
+    `notifications.ntfy_enabled`. Tests in `test_notifiers.py`._
 - ✅ **Honeypot / canary ports.** Open a few fake services; any connection is high-fidelity
   evidence of internal scanning. _Shipped: `capture/honeypot.py` — binds configured canary ports,
   raises a HIGH `HONEYPOT` alert (new category) on any connect, skips unbindable ports. Gated by
@@ -225,7 +229,8 @@ The original "biggest protector payoff for least work" slice — status as of 20
    single-host alert-chain engine (Phase 4) are shipped in `alerts/correlator.py`.
 3. ✅ **Responder framework + DNS sinkhole/quarantine, dry-run by default** (Phase 2) — shipped,
    now with a dashboard approval panel.
-4. **Telegram/ntfy actionable notifier** (Phase 5) — still the best next step (see below).
+4. ✅ **ntfy actionable notifier** (Phase 5) — shipped (2026-06-10): `NtfyNotifier` pushes alerts
+   and Approve/Reject action buttons for pending responder actions.
 
 ---
 
@@ -234,12 +239,12 @@ The original "biggest protector payoff for least work" slice — status as of 20
 Pick up here in a fresh chat. Ordered by value/effort; each is independently shippable and
 should follow the project's conventions (opt-in config, dry-run-safe, tests alongside).
 
-1. **Actionable notifier (Telegram or ntfy) with approve/reject.** _Highest value next._
-   Closes the loop opened by the approval workflow: push a PENDING action to your phone with
-   Approve/Reject buttons that call the existing `/api/responses/<id>/{approve,reject}` endpoints.
-   Build on the `Notifier` interface (`alerts/notifiers.py`) and the `ResponderManager` pending
-   registry. Start with ntfy (simplest: HTTP POST, action buttons) before Telegram's bot API.
-   Scope: new notifier + config block + delivery of the action id + tests.
+1. ✅ **Actionable notifier (ntfy) with approve/reject.** _Shipped (2026-06-10._ `NtfyNotifier`
+   in `alerts/notifiers.py` pushes alerts and, for actions awaiting approval, an actionable
+   notification with Approve/Reject buttons that POST to `/api/responses/<id>/{approve,reject}`
+   with the dashboard bearer token. `ResponderManager.set_pending_notifier` delivers the action id
+   the moment it goes PENDING; gated by `notifications.ntfy_enabled`. Tests in `test_notifiers.py`.
+   _Open follow-up:_ Telegram bot-API variant (different action-button mechanism).
 
 2. **Incident timeline UI.** The single-host incident engine now emits a structured timeline in
    `incident.extra["timeline"]`; next, surface that evidence clearly in the dashboard instead of

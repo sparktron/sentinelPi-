@@ -10,6 +10,7 @@ Available notifiers:
 - FileNotifier: Rotating log file in JSON Lines format.
 - EmailNotifier: SMTP email (optional).
 - WebhookNotifier: HTTP POST to a URL (optional).
+- NtfyNotifier: ntfy push with Approve/Reject action buttons (optional).
 """
 
 from __future__ import annotations
@@ -312,6 +313,152 @@ class WebhookNotifier(BaseNotifier):
             logger.debug("Webhook delivered for: %s", alert.title)
         except Exception as exc:
             logger.error("Webhook delivery failed: %s", exc)
+
+
+class NtfyNotifier(BaseNotifier):
+    """
+    Pushes alerts to an ntfy topic, and — for responder actions awaiting human
+    approval — sends an actionable notification with Approve/Reject buttons that
+    call the dashboard's response API directly from your phone.
+
+    Two entry points:
+    - ``send(alert)``: normal alert push (filtered by ``ntfy_min_severity``).
+    - ``notify_pending(action)``: an action-button notification for a PENDING
+      responder action. Wired in by the ResponderManager so approvals close the
+      loop without opening the dashboard. Buttons are only attached when both
+      ``ntfy_dashboard_url`` and ``ntfy_dashboard_token`` are configured.
+
+    Like the other network notifiers, delivery is queued and drained on a daemon
+    worker so the alert pipeline never blocks on ntfy latency.
+    """
+
+    # Severity → ntfy priority (1=min … 5=max).
+    _PRIORITY = {
+        Severity.INFO: 2,
+        Severity.LOW: 2,
+        Severity.MEDIUM: 3,
+        Severity.HIGH: 4,
+        Severity.CRITICAL: 5,
+    }
+    _TAGS = {
+        Severity.INFO: ["information_source"],
+        Severity.LOW: ["information_source"],
+        Severity.MEDIUM: ["warning"],
+        Severity.HIGH: ["rotating_light"],
+        Severity.CRITICAL: ["rotating_light"],
+    }
+
+    def __init__(self, config: Config) -> None:
+        self._config = config.notifications
+        self._min_severity = Severity(self._config.ntfy_min_severity)
+        self._hostname = socket.gethostname()
+        self._queue: "queue.Queue[dict]" = queue.Queue(maxsize=200)
+        self._stop_event = threading.Event()
+        self._thread = threading.Thread(target=self._worker, daemon=True, name="NtfyNotifier")
+        self._thread.start()
+
+    def send(self, alert: Alert) -> None:
+        if not self._config.ntfy_enabled or not self._config.ntfy_topic:
+            return
+        if alert.severity < self._min_severity:
+            return
+        host = f" [{alert.affected_host}]" if alert.affected_host else ""
+        payload = {
+            "topic": self._config.ntfy_topic,
+            "title": f"[{alert.severity.value.upper()}]{host} {alert.title}",
+            "message": alert.description or alert.title,
+            "priority": self._PRIORITY.get(alert.severity, 3),
+            "tags": self._TAGS.get(alert.severity, []),
+        }
+        self._enqueue(payload)
+
+    def notify_pending(self, action) -> None:
+        """
+        Push an actionable notification for a responder action awaiting approval.
+
+        ``action`` is a ResponderAction (duck-typed: ``action_id``, ``responder``,
+        ``target``, ``description``). Safe to call regardless of config — it no-ops
+        when ntfy is disabled.
+        """
+        if not self._config.ntfy_enabled or not self._config.ntfy_topic:
+            return
+        payload: dict = {
+            "topic": self._config.ntfy_topic,
+            "title": f"[APPROVAL] {action.responder} on {action.target}",
+            "message": action.description or "Action awaiting approval.",
+            "priority": 5,
+            "tags": ["police_car_light"],
+        }
+        actions = self._approval_buttons(action.action_id)
+        if actions:
+            payload["actions"] = actions
+        self._enqueue(payload)
+
+    def _approval_buttons(self, action_id: str) -> list:
+        """Build ntfy http action buttons that hit the dashboard response API."""
+        base = self._config.ntfy_dashboard_url.rstrip("/")
+        token = self._config.ntfy_dashboard_token
+        if not base or not token:
+            return []
+        headers = {"Authorization": f"Bearer {token}"}
+        return [
+            {
+                "action": "http",
+                "label": "Approve",
+                "url": f"{base}/api/responses/{action_id}/approve",
+                "method": "POST",
+                "headers": headers,
+                "clear": True,
+            },
+            {
+                "action": "http",
+                "label": "Reject",
+                "url": f"{base}/api/responses/{action_id}/reject",
+                "method": "POST",
+                "headers": headers,
+                "clear": True,
+            },
+        ]
+
+    def _enqueue(self, payload: dict) -> None:
+        if self._stop_event.is_set():
+            logger.warning("ntfy notifier is stopping — dropping notification.")
+            return
+        try:
+            self._queue.put_nowait(payload)
+        except Exception:
+            logger.warning("ntfy queue full — dropping notification.")
+
+    def _worker(self) -> None:
+        while not self._stop_event.is_set() or not self._queue.empty():
+            try:
+                payload = self._queue.get(timeout=0.5)
+            except queue.Empty:
+                continue
+            try:
+                self._publish(payload)
+            except Exception as exc:
+                logger.warning("ntfy notification failed: %s", exc)
+
+    def close(self, timeout: float = 5.0) -> None:
+        self._stop_event.set()
+        self._thread.join(timeout=timeout)
+        if self._thread.is_alive():
+            logger.warning("ntfy notifier did not stop cleanly.")
+
+    def _publish(self, payload: dict) -> None:
+        import requests
+        headers = {"Content-Type": "application/json"}
+        if self._config.ntfy_token:
+            headers["Authorization"] = f"Bearer {self._config.ntfy_token}"
+        resp = requests.post(
+            self._config.ntfy_server.rstrip("/"),
+            json=payload,
+            headers=headers,
+            timeout=10,
+        )
+        resp.raise_for_status()
+        logger.debug("ntfy notification delivered: %s", payload.get("title"))
 
 
 class ForwardNotifier(BaseNotifier):

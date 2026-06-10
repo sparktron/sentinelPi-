@@ -45,7 +45,7 @@ from .baseline.engine import BaselineEngine
 from .inventory.device_tracker import DeviceTracker
 from .alerts.manager import AlertManager
 from .alerts.notifiers import (
-    ConsoleNotifier, FileNotifier, EmailNotifier, WebhookNotifier, ForwardNotifier,
+    ConsoleNotifier, FileNotifier, EmailNotifier, WebhookNotifier, NtfyNotifier, ForwardNotifier,
 )
 from .responders.manager import ResponderManager
 from .responders.firewall import FirewallResponder
@@ -182,6 +182,7 @@ class SentinelPi:
             init_asn(self.config.monitoring.asn_db_path)
 
         # Register notifiers
+        self._ntfy_notifier: Optional[NtfyNotifier] = None
         self._setup_notifiers()
 
         # Active-response orchestrator (Phase 2) — fully inert unless enabled.
@@ -297,6 +298,11 @@ class SentinelPi:
             manager.add_responder(KillSwitchResponder(self.config))
         self._alert_manager.set_responder_manager(manager)
         self._responder_manager = manager
+        # Close the approval loop: push Approve/Reject buttons to ntfy when an
+        # action is queued for human approval.
+        if self._ntfy_notifier is not None:
+            manager.set_pending_notifier(self._ntfy_notifier.notify_pending)
+            logger.info("ntfy actionable approvals wired to responder manager.")
         mode = "DRY-RUN" if rc.dry_run else "ARMED"
         logger.warning("Active response ENABLED (%s). Responders: %d.",
                        mode, len(manager._responders))
@@ -325,6 +331,14 @@ class SentinelPi:
         if self.config.notifications.webhook_enabled and self.config.notifications.webhook_url:
             self._alert_manager.add_notifier(WebhookNotifier(self.config))
             logger.info("Webhook notifications enabled: %s", self.config.notifications.webhook_url)
+
+        # Optional: ntfy (with Approve/Reject action buttons for pending responses)
+        if self.config.notifications.ntfy_enabled and self.config.notifications.ntfy_topic:
+            self._ntfy_notifier = NtfyNotifier(self.config)
+            self._alert_manager.add_notifier(self._ntfy_notifier)
+            logger.info("ntfy notifications enabled: %s/%s",
+                        self.config.notifications.ntfy_server.rstrip("/"),
+                        self.config.notifications.ntfy_topic)
 
         # Sensor mode: forward alerts to a central collector (Phase 3).
         if self.config.cluster.role == "sensor" and self.config.cluster.collector_url:

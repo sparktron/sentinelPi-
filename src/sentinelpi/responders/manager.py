@@ -22,7 +22,7 @@ from __future__ import annotations
 import logging
 import threading
 from collections import deque
-from typing import Deque, Dict, List, Optional, Tuple
+from typing import Callable, Deque, Dict, List, Optional, Tuple
 
 from .base import BaseResponder, ResponderAction, PLANNED, PENDING, EXECUTED, FAILED, REJECTED
 from ..models import Alert
@@ -41,11 +41,18 @@ class ResponderManager:
         self._recent: Deque[ResponderAction] = deque(maxlen=200)
         # action_id → (action, responder) for actions awaiting approval.
         self._pending: Dict[str, Tuple[ResponderAction, BaseResponder]] = {}
+        # Optional callback fired when an action is queued for approval, so an
+        # actionable notifier (e.g. ntfy) can push Approve/Reject buttons.
+        self._pending_notifier: Optional[Callable[[ResponderAction], None]] = None
 
     def add_responder(self, responder: BaseResponder) -> None:
         with self._lock:
             self._responders.append(responder)
         logger.debug("Registered responder: %s", responder.name)
+
+    def set_pending_notifier(self, callback: Callable[[ResponderAction], None]) -> None:
+        """Register a callback invoked with each action newly queued for approval."""
+        self._pending_notifier = callback
 
     def handle(self, alert: Alert) -> List[ResponderAction]:
         """
@@ -80,6 +87,12 @@ class ResponderManager:
                         self._pending[action.action_id] = (action, responder)
                     logger.warning("[PENDING APPROVAL] %s on %s (%s): %s",
                                    responder.name, action.target, action.action_id, action.description)
+                    if self._pending_notifier is not None:
+                        try:
+                            self._pending_notifier(action)
+                        except Exception as exc:
+                            logger.error("Pending-action notifier failed for %s: %s",
+                                         action.action_id, exc)
                 else:
                     self._run(action, responder)
 
