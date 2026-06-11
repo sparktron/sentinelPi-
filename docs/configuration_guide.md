@@ -302,3 +302,25 @@ sentinelpi --check-config
 # or
 python -m sentinelpi.main --config /path/to/config.yaml --check-config
 ```
+
+`--check-config` is a **static** check: it validates operator-facing values (CIDRs, ports, severity
+names, responder backends, sensitivity profiles) and exits non-zero with actionable errors. It makes
+no network calls, so it is safe to run anywhere, including CI.
+
+### Active preflight: `--check`
+
+```bash
+sentinelpi --check
+```
+
+`--check` runs the same static validation and then **actively exercises your configured outputs**:
+
+- **Notifiers** — connects to SMTP (authenticating, but sending no mail) and delivers a clearly
+  labelled test notification through each enabled webhook / ntfy / forward channel. This catches a
+  wrong URL, bad token, or failed auth before a real alert needs to go out.
+- **Responders** — asks each enabled responder to *plan* a synthetic alert. Planning is
+  side-effect-free, so **nothing is ever executed**; the output shows what each responder *would*
+  do (e.g. `would: Block 203.0.113.10 (iptables)`).
+
+Exit codes: `0` = all good, `2` = invalid config, `3` = a preflight probe failed. Because `--check`
+delivers real test notifications, run it interactively rather than in unattended CI.
