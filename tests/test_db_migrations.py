@@ -32,6 +32,7 @@ EXPECTED_TABLES = {
     "file_hashes",
     "host_countries",
     "host_activity_hours",
+    "host_profile",
 }
 
 

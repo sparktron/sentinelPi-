@@ -23,9 +23,10 @@ low disk space, and `/api/status` health exposure. CI now runs compile checks, r
 coverage-enabled pytest. The first incident-UX slice is shipped: ordered single-host
 new-device -> port-scan -> lateral-movement chains now raise INCIDENT alerts with timelines, and
 the dashboard now renders those timelines inline. The ntfy actionable notifier (Approve/Reject for
-pending responses) is also shipped, and mypy now passes clean and gates CI. Next implementation
-`--check` now exercises configured notifiers/responders in preflight mode. Next implementation pass
-should move into per-host profile dimensions beyond active hours.
+pending responses) is also shipped, mypy now passes clean and gates CI, `--check` exercises
+configured notifiers/responders in preflight mode, and per-host destination-port/internal-peer
+profile dimensions are shipped. Next implementation pass should move into dashboard live updates or
+host drill-down pages.
 
 ### Critical
 
@@ -188,8 +189,10 @@ Exit criteria:
   movement into one incident timeline. _Shipped (2026-06-10): `IncidentCorrelator` now detects
   ordered single-host sequences under the existing `correlation.enabled` gate and stores a structured
   timeline in `incident.extra["timeline"]`. The dashboard renders that timeline inline (2026-06-10)._
-- Extend per-host profiles beyond active hours: usual peer set, destination ports, byte ranges, and
-  protocol mix.
+- ✅ Extend per-host profiles beyond active hours: usual peer set and destination ports. _Shipped
+  (2026-06-13): `HostProfileDetector` learns `dst_port` and internal `peer` values per host in
+  schema-v7 `host_profile`, then flags first off-profile values once each dimension is established._
+- Extend per-host profiles further with byte ranges and protocol mix.
 - Add adaptive thresholds per host/network so noisy networks can settle without global sensitivity
   changes.
 - Add explainability fields to alerts: which thresholds fired, what baseline was compared, and how
@@ -198,7 +201,7 @@ Exit criteria:
 Exit criteria:
 - Incident alerts reduce duplicate alert noise while preserving raw alerts. _Met for the
   single-host sequence path; the dashboard now renders the incident timeline inline (2026-06-10)._
-- Per-host profile tables are migrated and restart-safe.
+- ✅ Per-host profile tables are migrated and restart-safe for port/internal-peer dimensions.
 - ✅ Dashboard can show incident timeline and contributing evidence. _Shipped (2026-06-10): the
   alerts table renders `extra["timeline"]` as a collapsible per-incident event list._
 

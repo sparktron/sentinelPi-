@@ -169,8 +169,12 @@ Today SentinelPi sees its own host + the LAN it can sniff. To protect *the netwo
   - ✅ **Active-hours profile.** _Shipped: `detectors/active_hours_detector.py` — learns each host's
     normal hours-of-activity (persisted in `host_activity_hours`, schema v5) and flags the first
     activity in a never-seen hour, once the host's profile is established (`active_hours_min_known`)
-    and past the learning phase. Tests in `test_active_hours.py`._ Remaining profile dimensions
-    (typical ports/bytes/peer-set) are follow-ups.
+    and past the learning phase. Tests in `test_active_hours.py`._
+  - ✅ **Port/internal-peer profile.** _Shipped (2026-06-13): `detectors/host_profile_detector.py`
+    learns each local host's usual destination ports and internal peers (persisted in `host_profile`,
+    schema v7), then flags first off-profile values after the per-dimension profile is established.
+    Tests in `test_host_profile.py`._ Remaining profile dimensions (bytes/protocol mix) are
+    follow-ups.
 - **Sequence/correlation engine.** Turn related alerts into **incidents** (e.g. new device → port
   scan → admin connection = "possible intrusion in progress") with a single timeline, instead of N
   independent alerts. _Shipped (2026-06-10): ordered single-host new-device → port-scan →
@@ -262,9 +266,9 @@ should follow the project's conventions (opt-in config, dry-run-safe, tests alon
    `config/preflight.py` probes configured network notifiers and asks enabled responders to plan
    synthetic alerts without execution. CLI exits 3 on preflight failure.
 
-5. **Per-host profile dimensions beyond active-hours** (Phase 4): typical ports / bytes / peer-set,
-   alerting on deviation from the host's *own* learned profile. Extends
-   `detectors/active_hours_detector.py`'s persistence pattern (new schema-versioned tables).
+5. ✅ **Per-host profile dimensions beyond active-hours.** _Shipped (2026-06-13):_ destination-port
+   and internal-peer profiles are persisted in schema v7 and alert on deviation from the host's own
+   learned behavior. Follow-up: bytes/protocol mix profiles.
 
 **Project conventions for any of the above:** gate new behavior behind a config flag (default
 off/safe), keep responders dry-run + approval-gated, add tests in `tests/` (suite currently 281,

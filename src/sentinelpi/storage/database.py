@@ -28,7 +28,7 @@ from ..models import Alert, AlertStatus, Device, Severity, AlertCategory
 logger = logging.getLogger(__name__)
 
 # Current schema version — bump when adding migrations
-SCHEMA_VERSION = 6
+SCHEMA_VERSION = 7
 
 # Thread-local storage for per-thread SQLite connections
 _thread_local = threading.local()
@@ -126,6 +126,8 @@ class Database:
             self._migrate_v5(conn)
         if current_version < 6:
             self._migrate_v6(conn)
+        if current_version < 7:
+            self._migrate_v7(conn)
 
         conn.execute("DELETE FROM schema_version")
         conn.execute("INSERT INTO schema_version VALUES (?)", (SCHEMA_VERSION,))
@@ -289,6 +291,26 @@ class Database:
             conn.execute("ALTER TABLE alerts ADD COLUMN sensor TEXT")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_alerts_sensor ON alerts(sensor)")
         logger.info("Database migration v6 applied.")
+
+    def _migrate_v7(self, conn: sqlite3.Connection) -> None:
+        """
+        Per-host behavioural profile beyond active-hours: a generic
+        (ip, dimension, value) table so a host can learn its usual destination
+        ports, internal peers, etc., and we can flag the first off-profile value.
+        """
+        conn.executescript("""
+            CREATE TABLE IF NOT EXISTS host_profile (
+                ip         TEXT NOT NULL,
+                dimension  TEXT NOT NULL,   -- e.g. 'dst_port' | 'peer'
+                value      TEXT NOT NULL,   -- the observed value, as text
+                first_seen TEXT NOT NULL,
+                PRIMARY KEY (ip, dimension, value)
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_host_profile_ip
+                ON host_profile(ip, dimension);
+        """)
+        logger.info("Database migration v7 applied.")
 
     # ------------------------------------------------------------------
     # Alert CRUD
@@ -659,6 +681,29 @@ class Database:
             "SELECT hour FROM host_activity_hours WHERE ip=?", (ip,)
         ).fetchall()
         return {r["hour"] for r in rows}
+
+    def record_host_profile_value(self, ip: str, dimension: str, value: str) -> bool:
+        """
+        Record that ``ip`` exhibited ``value`` for behavioural ``dimension``
+        (e.g. dimension='dst_port', value='443'). Returns True the first time
+        this (ip, dimension, value) triple is seen. Atomic via INSERT OR IGNORE.
+        """
+        now = clock.now().isoformat()
+        with self._conn() as conn:
+            cur = conn.execute(
+                "INSERT OR IGNORE INTO host_profile (ip, dimension, value, first_seen) "
+                "VALUES (?,?,?,?)",
+                (ip, dimension, value, now),
+            )
+            return cur.rowcount > 0
+
+    def get_host_profile_values(self, ip: str, dimension: str) -> set[str]:
+        """Return the set of values ``ip`` has previously shown for ``dimension``."""
+        conn = self._get_connection()
+        rows = conn.execute(
+            "SELECT value FROM host_profile WHERE ip=? AND dimension=?", (ip, dimension)
+        ).fetchall()
+        return {r["value"] for r in rows}
 
     # ------------------------------------------------------------------
     # DNS observations

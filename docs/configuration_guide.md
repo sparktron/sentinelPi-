@@ -70,8 +70,15 @@ monitoring:
   file_integrity_enabled: false    # Optional config file hashing
   geo_enabled: false               # Requires GeoLite2 database
   active_discovery_enabled: false  # Low-rate ARP ping (off by default)
+  active_hours_detection_enabled: true
+  host_profile_detection_enabled: true
   self_monitoring_enabled: true    # SYSTEM alerts if SentinelPi itself degrades
 ```
+
+`active_hours_detection_enabled` learns when each host is normally active.
+`host_profile_detection_enabled` learns each host's usual destination ports and
+internal peers, then flags first off-profile values after the profile is
+established (`host_profile_min_known_ports` / `host_profile_min_known_peers`).
 
 ### Self-Monitoring Watchdog
 

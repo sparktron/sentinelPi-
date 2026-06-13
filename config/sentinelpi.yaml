@@ -111,6 +111,12 @@ monitoring:
   active_hours_detection_enabled: true
   active_hours_min_known: 6        # require this many known hours before flagging
 
+  # Per-host behaviour profiling beyond active hours: learn each host's usual
+  # destination ports and internal peers, then flag the first off-profile value.
+  host_profile_detection_enabled: true
+  host_profile_min_known_ports: 8   # require this many known ports before flagging
+  host_profile_min_known_peers: 4   # require this many known LAN peers before flagging
+
   # Honeypot / canary ports: open fake services; ANY connection is high-fidelity
   # evidence of internal scanning -> HIGH alert. Ports < 1024 need root to bind.
   honeypot_enabled: false

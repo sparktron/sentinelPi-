@@ -277,6 +277,7 @@ Quick start: set `network.interfaces`, `network.subnets`, and `network.gateway_i
 | Threat intel | Connections to known-bad IPs/domains | Blocklist match |
 | GeoIP / ASN | First connection to a new country; bad-reputation networks | Per-host baseline |
 | Active hours | Activity outside a host's learned schedule | Time-window baseline |
+| Host profile | First use of an unfamiliar destination port or internal peer for that host | Per-host behaviour baseline |
 
 ## Active response (optional)
 

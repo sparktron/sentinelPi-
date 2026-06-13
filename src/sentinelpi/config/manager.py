@@ -187,6 +187,17 @@ class MonitoringConfig:
     # Only flag once a host has an established profile (this many distinct hours).
     active_hours_min_known: int = 6
 
+    # Per-host behavioural profiling beyond active-hours: learn each local host's
+    # usual destination ports and internal peers, then flag the first time it
+    # connects on an unfamiliar port or to an internal peer it has never used.
+    # Off-profile-for-that-host activity is a classic lateral-movement / malware
+    # tell that a global baseline misses.
+    host_profile_detection_enabled: bool = True
+    # Only flag a host once its profile is established for that dimension (this
+    # many distinct ports / peers learned). Higher = quieter but slower to arm.
+    host_profile_min_known_ports: int = 8
+    host_profile_min_known_peers: int = 4
+
     # DHCP lease ingestion for authoritative device identity (names from the
     # router/DHCP server beat ARP-inferred / reverse-DNS guesses).
     dhcp_leases_enabled: bool = False
@@ -591,6 +602,10 @@ def validate_config(config: Config) -> List[ConfigIssue]:
                            config.monitoring.active_discovery_interval_seconds)
     check_non_negative_int("monitoring.baseline_learning_hours", config.monitoring.baseline_learning_hours)
     check_non_negative_int("monitoring.active_hours_min_known", config.monitoring.active_hours_min_known)
+    check_non_negative_int("monitoring.host_profile_min_known_ports",
+                           config.monitoring.host_profile_min_known_ports)
+    check_non_negative_int("monitoring.host_profile_min_known_peers",
+                           config.monitoring.host_profile_min_known_peers)
     check_non_negative_int("monitoring.self_monitoring_interval_seconds",
                            config.monitoring.self_monitoring_interval_seconds)
     check_positive_number("monitoring.self_monitoring_queue_warn_ratio",

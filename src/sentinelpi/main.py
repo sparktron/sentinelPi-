@@ -66,6 +66,7 @@ from .detectors.doh_detector import DoHDetector
 from .detectors.geo_country_detector import GeoCountryDetector
 from .detectors.asn_detector import ASNReputationDetector
 from .detectors.active_hours_detector import ActiveHoursDetector
+from .detectors.host_profile_detector import HostProfileDetector
 from .detectors.threat_intel_detector import ThreatIntelDetector
 from .intel.threat_feeds import ThreatIntelService
 from .capture.packet_capture import PacketCapture
@@ -226,6 +227,11 @@ class SentinelPi:
         self._active_hours_detector: Optional[ActiveHoursDetector] = None
         if self.config.monitoring.active_hours_detection_enabled:
             self._active_hours_detector = ActiveHoursDetector(**detector_kwargs)
+
+        # Per-host behaviour profile detector (ports / internal peers).
+        self._host_profile_detector: Optional[HostProfileDetector] = None
+        if self.config.monitoring.host_profile_detection_enabled:
+            self._host_profile_detector = HostProfileDetector(**detector_kwargs)
 
         # Threat-intelligence service + detector (opt-in). The service loads any
         # cached feeds now; a background thread refreshes them (see _start_threat_intel).
@@ -388,6 +394,7 @@ class SentinelPi:
             self._geo_country_detector,
             self._asn_detector,
             self._active_hours_detector,
+            self._host_profile_detector,
             self._threat_intel_detector,
         ):
             if optional is not None:
