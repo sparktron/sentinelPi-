@@ -25,8 +25,8 @@ new-device -> port-scan -> lateral-movement chains now raise INCIDENT alerts wit
 the dashboard now renders those timelines inline. The ntfy actionable notifier (Approve/Reject for
 pending responses) is also shipped, mypy now passes clean and gates CI, `--check` exercises
 configured notifiers/responders in preflight mode, and per-host destination-port/internal-peer
-profile dimensions are shipped. Next implementation pass should move into dashboard live updates or
-host drill-down pages.
+profile dimensions are shipped. Dashboard live updates are shipped via server-sent events with a
+polling fallback. Next implementation pass should move into host drill-down pages.
 
 ### Critical
 
@@ -213,7 +213,9 @@ Exit criteria:
 - ✅ Add active `--check` preflight for configured notifiers/responders. _Shipped (2026-06-11):
   network notifiers are probed, responders plan synthetic alerts without execution, and the CLI
   exits non-zero on preflight failure._
-- Add dashboard live updates with server-sent events or WebSockets.
+- ✅ Add dashboard live updates with server-sent events or WebSockets. _Shipped (2026-06-14):
+  `/api/events` streams dashboard status ticks; the frontend uses EventSource for live
+  status/alert/response refresh and falls back to polling if the stream drops._
 - Add per-host drill-down pages: timeline, known destinations, DNS history, device identity, and
   responder history.
 - Add SIEM-friendly export formats: ECS-style JSON, syslog/CEF, or OpenTelemetry logs.
@@ -238,7 +240,8 @@ Exit criteria:
   probing optional files/binaries and printing degraded feature summaries.
 - **Baseline backup/restore:** export/import learned DNS, destinations, active hours, countries, and
   device inventory for hardware replacement or SD-card recovery.
-- **Dashboard live mode:** live alert stream, stale sensor warnings, and queue/degraded-health badges.
+- **Dashboard live mode:** ✅ SSE status/alert/action refresh is shipped; follow-up is stale sensor
+  warnings and queue/degraded-health badges.
 
 ## Validation Performed
 

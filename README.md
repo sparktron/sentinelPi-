@@ -79,8 +79,8 @@ English description, a confidence score, and a recommended next step.
 - **Behavioral baseline** — Welford online statistics; deviations scored, not hard-coded
 
 **🖥️ Interface & alerting**
-- **Web dashboard** — local dark-themed Flask UI: live alerts, device inventory, suspicious hosts,
-  and a pending-response approval queue (token login, session cookie)
+- **Web dashboard** — local dark-themed Flask UI: SSE live updates, alerts, device inventory,
+  suspicious hosts, and a pending-response approval queue (token login, session cookie)
 - **Alert management** — dedup, cooldowns, severity levels, acknowledge & mute
 - **Structured outputs** — console, rotating JSON log, SQLite, optional email, webhooks & ntfy push (with Approve/Reject buttons for responder approvals)
 - **Daily / weekly reports** — rolled-up summaries of what happened on the network

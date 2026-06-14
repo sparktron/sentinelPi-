@@ -13,6 +13,7 @@ from datetime import datetime, timezone
 
 from sentinelpi.detectors.host_profile_detector import HostProfileDetector
 from sentinelpi.models import AlertCategory, Severity
+from sentinelpi.utils import clock
 
 
 def _conn(src_ip="192.168.1.50", dst_ip="93.184.216.34", dst_port=443):
@@ -112,7 +113,8 @@ def test_learning_phase_records_but_no_alert(config, db, device_tracker):
     detector = HostProfileDetector(config=config, db=db, baseline=learning_baseline, device_tracker=device_tracker)
     _seed(db, "192.168.1.50", "dst_port", [53, 80, 443])
 
-    assert detector.process_event(_conn(dst_port=22)) == []
+    with clock.use_clock(clock.FixedClock(datetime(2026, 6, 13, 12, 0, tzinfo=timezone.utc))):
+        assert detector.process_event(_conn(dst_port=22)) == []
     assert "22" in db.get_host_profile_values("192.168.1.50", "dst_port")
 
 

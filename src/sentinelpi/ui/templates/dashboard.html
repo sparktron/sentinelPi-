@@ -32,7 +32,7 @@
   .badge-critical { background: #450a0a; color: var(--critical); }
   table { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
   th { background: var(--surface); color: var(--muted); text-transform: uppercase; font-size: 0.7rem; padding: 8px 12px; text-align: left; border-bottom: 1px solid var(--border); }
-  td { padding: 8px 12px; border-bottom: 1px solid var(--border); vertical-align: top; word-break: break-all; }
+  td { padding: 8px 12px; border-bottom: 1px solid var(--border); vertical-align: top; overflow-wrap: anywhere; }
   tr:hover td { background: rgba(99,102,241,0.05); }
   .section { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; margin-bottom: 1.5rem; overflow: hidden; }
   .section-header { padding: 0.75rem 1rem; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; }
@@ -54,6 +54,8 @@
   .tl-title { color: var(--muted); }
   .refresh-note { font-size: 0.7rem; color: var(--muted); }
   #status-bar { display: flex; gap: 1rem; font-size: 0.75rem; color: var(--muted); margin-bottom: 1rem; }
+  .live-ok { color: var(--low); }
+  .live-warn { color: var(--medium); }
 </style>
 </head>
 <body>
@@ -66,6 +68,7 @@
   <span>Devices: <span id="device-count">—</span></span>
   <span>Baseline: <span id="baseline-status">—</span></span>
   <span>Last update: <span id="last-update">—</span></span>
+  <span>Updates: <span id="live-status" class="live-warn">Polling</span></span>
   <span style="margin-left:auto"><a href="/logout" style="color:var(--muted)">Log out</a></span>
 </div>
 
@@ -97,7 +100,7 @@
 <div class="section">
   <div class="section-header">
     <h2>Recent Alerts</h2>
-    <span class="refresh-note">Auto-refresh 30s</span>
+    <span class="refresh-note">Live when connected; polling fallback</span>
   </div>
   <div class="filters">
     <select id="filter-sev">
@@ -207,21 +210,25 @@ async function apiFetch(url, opts) {
 }
 
 // Load status summary
+function applyStatus(data) {
+  const counts = data.alert_counts_24h || {};
+  document.getElementById('cnt-critical').textContent = counts.critical || 0;
+  document.getElementById('cnt-high').textContent = counts.high || 0;
+  document.getElementById('cnt-medium').textContent = counts.medium || 0;
+  document.getElementById('cnt-loinfo').textContent = (counts.low || 0) + (counts.info || 0);
+  document.getElementById('device-count').textContent = data.device_count || 0;
+  const bl = data.baseline || {};
+  document.getElementById('baseline-status').textContent = bl.is_learning
+    ? `Learning (${Math.ceil(bl.learning_hours_remaining || 0)}h remaining)`
+    : `Active (${bl.known_domains || 0} domains, ${bl.known_destinations || 0} dests)`;
+  document.getElementById('last-update').textContent = new Date().toLocaleTimeString();
+}
+
 async function loadStatus() {
   try {
     const r = await apiFetch('/api/status');
     const data = await r.json();
-    const counts = data.alert_counts_24h || {};
-    document.getElementById('cnt-critical').textContent = counts.critical || 0;
-    document.getElementById('cnt-high').textContent = counts.high || 0;
-    document.getElementById('cnt-medium').textContent = counts.medium || 0;
-    document.getElementById('cnt-loinfo').textContent = (counts.low || 0) + (counts.info || 0);
-    document.getElementById('device-count').textContent = data.device_count || 0;
-    const bl = data.baseline || {};
-    document.getElementById('baseline-status').textContent = bl.is_learning
-      ? `Learning (${Math.ceil(bl.learning_hours_remaining || 0)}h remaining)`
-      : `Active (${bl.known_domains || 0} domains, ${bl.known_destinations || 0} dests)`;
-    document.getElementById('last-update').textContent = new Date().toLocaleTimeString();
+    applyStatus(data);
   } catch(e) { console.error('Status load failed:', e); }
 }
 
@@ -393,21 +400,58 @@ async function rejectAction(id, btn) {
   loadResponses();
 }
 
+let pollingStarted = false;
+let liveEvents = null;
+
+function setLiveStatus(text, ok) {
+  const el = document.getElementById('live-status');
+  el.textContent = text;
+  el.className = ok ? 'live-ok' : 'live-warn';
+}
+
+function startPollingFallback() {
+  if (pollingStarted) return;
+  pollingStarted = true;
+  setLiveStatus('Polling', false);
+  setInterval(() => {
+    loadStatus();
+    loadAlerts();
+    loadResponses();
+  }, 30000);
+  setInterval(loadDevices, 60000);
+  setInterval(loadSuspicious, 60000);
+}
+
+function connectLiveUpdates() {
+  if (!window.EventSource) {
+    startPollingFallback();
+    return;
+  }
+  liveEvents = new EventSource('/api/events');
+  liveEvents.addEventListener('dashboard', event => {
+    const data = JSON.parse(event.data);
+    applyStatus(data);
+    setLiveStatus('Live', true);
+    loadAlerts();
+    loadResponses();
+    if ((data.tick || 0) % 6 === 0) {
+      loadDevices();
+      loadSuspicious();
+    }
+  });
+  liveEvents.onerror = () => {
+    if (liveEvents) liveEvents.close();
+    startPollingFallback();
+  };
+}
+
 // Initial load
 loadStatus();
 loadAlerts();
 loadDevices();
 loadSuspicious();
 loadResponses();
-
-// Auto-refresh every 30 seconds
-setInterval(() => {
-  loadStatus();
-  loadAlerts();
-  loadResponses();
-}, 30000);
-setInterval(loadDevices, 60000);
-setInterval(loadSuspicious, 60000);
+connectLiveUpdates();
 
 // Filter change handlers
 document.getElementById('filter-sev').addEventListener('change', loadAlerts);

@@ -25,9 +25,11 @@ from __future__ import annotations
 
 import hmac
 import ipaddress
+import json
 import logging
 import secrets
 import threading
+import time
 from datetime import timedelta
 from ..utils import clock
 from functools import wraps
@@ -40,7 +42,7 @@ logger = logging.getLogger(__name__)
 try:
     from flask import (
         Flask, jsonify, render_template, request, abort,
-        session, redirect, url_for,
+        session, redirect, url_for, Response, stream_with_context,
     )
     FLASK_AVAILABLE = True
 except ImportError:
@@ -216,21 +218,41 @@ def create_app(
     @app.route("/api/status")
     @require_token
     def api_status():
-        now = clock.now()
-        last_24h = now - timedelta(hours=24)
-        counts = db.get_alert_counts_by_severity(last_24h)
-        baseline_summary = baseline.get_summary()
-        manager_stats = alert_manager.get_stats()
+        return jsonify(_status_payload(db, device_tracker, baseline, alert_manager, watchdog))
 
-        return jsonify({
-            "status": "running",
-            "timestamp": now.isoformat(),
-            "alert_counts_24h": counts,
-            "device_count": device_tracker.get_device_count(),
-            "baseline": baseline_summary,
-            "alert_manager": manager_stats,
-            "watchdog": watchdog.get_status() if watchdog is not None else None,
-        })
+    @app.route("/api/events")
+    @require_token
+    def api_events():
+        """
+        Server-sent dashboard update stream.
+
+        Browsers authenticate this route with the same signed session cookie as
+        the rest of the dashboard. The payload is intentionally small: current
+        status plus a monotonically increasing tick so the frontend can refresh
+        alert/response tables without polling on a fixed timer.
+        """
+        try:
+            interval = _bounded_int(request.args.get("interval"), default=10, lo=2, hi=60)
+        except ValueError as exc:
+            return jsonify({"error": f"Invalid query parameter: {exc}"}), 400
+        once = request.args.get("once") == "1"
+
+        def _stream():
+            tick = 0
+            while True:
+                payload = _status_payload(db, device_tracker, baseline, alert_manager, watchdog)
+                payload["tick"] = tick
+                yield f"event: dashboard\ndata: {json.dumps(payload, default=str)}\n\n"
+                if once:
+                    return
+                tick += 1
+                time.sleep(interval)
+
+        return Response(
+            stream_with_context(_stream()),
+            mimetype="text/event-stream",
+            headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+        )
 
     @app.route("/api/alerts")
     @require_token
@@ -427,6 +449,24 @@ def _alert_to_dict(alert) -> dict:
         # Single-host incident engine attaches an ordered event timeline; the
         # dashboard renders it inline so an INCIDENT reads as a story, not a row.
         "timeline": alert.extra.get("timeline"),
+    }
+
+
+def _status_payload(db, device_tracker, baseline, alert_manager, watchdog) -> dict:
+    now = clock.now()
+    last_24h = now - timedelta(hours=24)
+    counts = db.get_alert_counts_by_severity(last_24h)
+    baseline_summary = baseline.get_summary()
+    manager_stats = alert_manager.get_stats()
+
+    return {
+        "status": "running",
+        "timestamp": now.isoformat(),
+        "alert_counts_24h": counts,
+        "device_count": device_tracker.get_device_count(),
+        "baseline": baseline_summary,
+        "alert_manager": manager_stats,
+        "watchdog": watchdog.get_status() if watchdog is not None else None,
     }
 
 

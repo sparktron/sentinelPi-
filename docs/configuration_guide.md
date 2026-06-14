@@ -122,6 +122,11 @@ SentinelPi prints a generated one to the log on startup.
 The token is **never** accepted via the query string (`?token=...`) — that would
 leak it into access logs, browser history, and `Referer` headers.
 
+The dashboard uses server-sent events (`/api/events`) for live status, alert, and
+response-action refreshes. Browsers authenticate the stream with the same signed
+session cookie as the rest of the dashboard; if the stream is unavailable, the
+page falls back to timed polling.
+
 ## Notifications
 
 ### Webhook (Slack, Discord, ntfy.sh, etc.)

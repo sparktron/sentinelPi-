@@ -188,8 +188,10 @@ Today SentinelPi sees its own host + the LAN it can sniff. To protect *the netwo
 ---
 
 ## Phase 5 — Usability, reporting, integration
-- **Real-time dashboard upgrade:** WebSocket live alert feed, network map (devices + edges), incident
-  timeline view, per-host drill-down. (Pairs with the dashboard-hardening from review H2/H3.)
+- **Real-time dashboard upgrade:** live alert feed, network map (devices + edges), incident
+  timeline view, per-host drill-down. _Partially shipped (2026-06-14): `/api/events` provides an
+  SSE dashboard stream and the frontend live-refreshes status, alerts, and response actions with a
+  polling fallback._
   - ✅ **Browser login + session auth.** _Shipped (2026-06-06): the H2 header-only token hardening
     had made the dashboard unreachable from a browser (the index route 401'd on navigation). Added a
     `/login` page (token posted in the form body, never the URL) that sets a signed, HttpOnly,
@@ -269,6 +271,10 @@ should follow the project's conventions (opt-in config, dry-run-safe, tests alon
 5. ✅ **Per-host profile dimensions beyond active-hours.** _Shipped (2026-06-13):_ destination-port
    and internal-peer profiles are persisted in schema v7 and alert on deviation from the host's own
    learned behavior. Follow-up: bytes/protocol mix profiles.
+
+6. ✅ **Dashboard live updates.** _Shipped (2026-06-14):_ `/api/events` streams dashboard status
+   ticks as server-sent events; the dashboard uses EventSource to refresh status cards, alerts, and
+   response actions live, with polling fallback. Follow-up: host drill-down pages and network map.
 
 **Project conventions for any of the above:** gate new behavior behind a config flag (default
 off/safe), keep responders dry-run + approval-gated, add tests in `tests/` (suite currently 281,

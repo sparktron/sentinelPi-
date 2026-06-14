@@ -66,6 +66,28 @@ def test_index_includes_incident_timeline_wiring(authed_client):
     assert "incident-timeline" in html
 
 
+def test_index_includes_live_update_wiring(authed_client):
+    client, headers = authed_client
+    html = client.get("/", headers=headers).get_data(as_text=True)
+    assert "EventSource" in html
+    assert "/api/events" in html
+    assert "connectLiveUpdates" in html
+    assert "startPollingFallback" in html
+    assert 'id="live-status"' in html
+
+
+def test_events_api_streams_dashboard_status(authed_client):
+    client, headers = authed_client
+    resp = client.get("/api/events?once=1", headers=headers)
+
+    assert resp.status_code == 200
+    assert resp.mimetype == "text/event-stream"
+    body = resp.get_data(as_text=True)
+    assert "event: dashboard" in body
+    assert '"status": "running"' in body
+    assert '"tick": 0' in body
+
+
 def test_alerts_api_exposes_incident_timeline(authed_client, db):
     from datetime import timezone
     from sentinelpi.models import Alert, AlertCategory, Severity
