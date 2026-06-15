@@ -26,7 +26,10 @@ the dashboard now renders those timelines inline. The ntfy actionable notifier (
 pending responses) is also shipped, mypy now passes clean and gates CI, `--check` exercises
 configured notifiers/responders in preflight mode, and per-host destination-port/internal-peer
 profile dimensions are shipped. Dashboard live updates are shipped via server-sent events with a
-polling fallback. Next implementation pass should move into host drill-down pages.
+polling fallback. Host drill-down pages are shipped with device identity, recent alerts, known
+destinations, DNS history, host profile values, response-action history, and dashboard links from
+host IPs. Next implementation pass should move into SIEM-friendly export formats or
+backup/restore.
 
 ### Critical
 
@@ -216,22 +219,25 @@ Exit criteria:
 - ✅ Add dashboard live updates with server-sent events or WebSockets. _Shipped (2026-06-14):
   `/api/events` streams dashboard status ticks; the frontend uses EventSource for live
   status/alert/response refresh and falls back to polling if the stream drops._
-- Add per-host drill-down pages: timeline, known destinations, DNS history, device identity, and
-  responder history.
+- ✅ Add per-host drill-down pages: timeline, known destinations, DNS history, device identity, and
+  responder history. _Shipped (2026-06-14): host IP links open `/devices/<ip>` pages backed by
+  `/api/devices/<ip>/detail`, including recent alerts, known destinations, DNS summaries, learned
+  host profile values, active hours/countries, and matching response actions._
 - Add SIEM-friendly export formats: ECS-style JSON, syslog/CEF, or OpenTelemetry logs.
 - Add backup/restore for the SQLite database and baseline state.
 
 Exit criteria:
 - Operators can approve/reject response actions from a phone.
-- Dashboard can answer "what is this host doing?" without querying raw APIs.
+- ✅ Dashboard can answer "what is this host doing?" without querying raw APIs.
 - Baselines and evidence can survive a Pi re-image.
 
 ## Proposed New Features
 
 - **Operational watchdog:** shipped for queue saturation, worker death, stale capture, threat-intel
   refresh health, low disk, and `/api/status`; daily-report health summaries remain open.
-- **Host investigation view:** a single page per device with identity, suspicion trend, active hours,
-  top peers, top DNS domains, open ports, and recent responder actions.
+- **Host investigation view:** ✅ shipped for identity, recent alerts, active hours, countries,
+  learned peers/destination ports, top DNS domains, known destinations, and recent responder
+  actions. Follow-up: add suspicion trend charts and open-port rollups.
 - **Incident timeline engine:** combine related alerts into one narrative with first-seen, escalation,
   affected hosts, and recommended next action.
 - **Actionable ntfy notifier:** ✅ shipped (2026-06-10) — `NtfyNotifier` sends pending response

@@ -190,6 +190,13 @@ def create_app(
     def index():
         return render_template("dashboard.html")
 
+    @app.route("/devices/<path:ip>")
+    @require_page
+    def device_page(ip: str):
+        if db.get_device_by_ip(ip) is None:
+            abort(404)
+        return render_template("device.html", ip=ip)
+
     @app.route("/login", methods=["GET", "POST"])
     def login():
         # Already authenticated (cookie or Bearer)? Skip the form.
@@ -387,7 +394,39 @@ def create_app(
         devices = device_tracker.get_all_devices()
         return jsonify([_device_to_dict(d) for d in devices])
 
-    @app.route("/api/devices/<ip>/trust", methods=["POST"])
+    @app.route("/api/devices/<path:ip>/detail")
+    @require_token
+    def api_device_detail(ip: str):
+        device = db.get_device_by_ip(ip)
+        if not device:
+            abort(404)
+
+        since = clock.now() - timedelta(days=30)
+        alerts = db.get_recent_alerts(limit=100, since=since, host=ip)
+        alert_ids = {alert.alert_id for alert in alerts}
+        actions = []
+        if responder_manager is not None:
+            actions = [
+                _action_to_dict(action)
+                for action in responder_manager.recent_actions()
+                if action.target == ip or action.alert_id in alert_ids
+            ]
+
+        return jsonify({
+            "device": _device_to_dict(device),
+            "recent_alerts": [_alert_to_dict(a) for a in alerts],
+            "known_destinations": db.get_destinations_for_host(ip, limit=25),
+            "dns_history": db.get_dns_summary_for_host(ip, limit=25),
+            "host_profile": {
+                "destination_ports": sorted(db.get_host_profile_values(ip, "dst_port"), key=_profile_sort_key),
+                "internal_peers": sorted(db.get_host_profile_values(ip, "peer")),
+                "active_hours": sorted(db.get_host_hours(ip)),
+                "countries": sorted(db.get_host_countries(ip)),
+            },
+            "response_actions": actions,
+        })
+
+    @app.route("/api/devices/<path:ip>/trust", methods=["POST"])
     @require_token
     def api_trust_device(ip: str):
         """Mark a device as trusted (reduces its alert noise)."""
@@ -502,6 +541,13 @@ def _device_to_dict(device) -> dict:
         "device_type": device.extra.get("device_type", "unknown"),
         "device_type_confidence": device.extra.get("device_type_confidence", 0.0),
     }
+
+
+def _profile_sort_key(value: str) -> tuple[int, Any]:
+    try:
+        return (0, int(value))
+    except (TypeError, ValueError):
+        return (1, value)
 
 
 def _generate_daily_report(db, device_tracker, baseline) -> dict:

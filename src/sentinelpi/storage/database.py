@@ -606,6 +606,21 @@ class Database:
         ).fetchall()
         return [dict(r) for r in rows]
 
+    def get_destinations_for_host(self, src_ip: str, limit: int = 25) -> List[Dict]:
+        """Return the most common known destinations for a host."""
+        conn = self._get_connection()
+        rows = conn.execute(
+            """
+            SELECT src_ip, dst_ip, dst_port, protocol, hit_count, first_seen, last_seen
+            FROM baseline_destinations
+            WHERE src_ip = ?
+            ORDER BY hit_count DESC, last_seen DESC
+            LIMIT ?
+            """,
+            (src_ip, limit),
+        ).fetchall()
+        return [dict(r) for r in rows]
+
     def record_dns_domain(self, domain: str) -> None:
         """Record a DNS domain as observed."""
         now = clock.now().isoformat()
@@ -733,6 +748,27 @@ class Database:
                 "SELECT * FROM dns_observations WHERE timestamp >= ? ORDER BY timestamp DESC",
                 (since.isoformat(),),
             ).fetchall()
+        return [dict(r) for r in rows]
+
+    def get_dns_summary_for_host(self, src_ip: str, limit: int = 25) -> List[Dict]:
+        """Return recent DNS activity grouped by queried domain for one host."""
+        conn = self._get_connection()
+        rows = conn.execute(
+            """
+            SELECT
+                query_name,
+                query_type,
+                COUNT(*) AS query_count,
+                SUM(CASE WHEN is_nxdomain THEN 1 ELSE 0 END) AS nxdomain_count,
+                MAX(timestamp) AS last_seen
+            FROM dns_observations
+            WHERE src_ip = ?
+            GROUP BY query_name, query_type
+            ORDER BY last_seen DESC
+            LIMIT ?
+            """,
+            (src_ip, limit),
+        ).fetchall()
         return [dict(r) for r in rows]
 
     # ------------------------------------------------------------------

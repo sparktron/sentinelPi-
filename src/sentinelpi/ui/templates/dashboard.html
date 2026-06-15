@@ -254,7 +254,8 @@ async function loadAlerts() {
         <td style="white-space:nowrap">${fmtTime(a.timestamp)}</td>
         <td>${sevBadge(a.severity)}</td>
         <td><small>${esc(a.category)}</small></td>
-        <td><code>${esc(a.affected_host)}</code>${a.related_host ? `<br><small>→ ${esc(a.related_host)}</small>` : ''}</td>
+        <td>${a.affected_host ? `<a href="/devices/${encodeURIComponent(a.affected_host)}"><code>${esc(a.affected_host)}</code></a>` : ''}
+          ${a.related_host ? `<br><small>→ <a href="/devices/${encodeURIComponent(a.related_host)}">${esc(a.related_host)}</a></small>` : ''}</td>
         <td>
           <strong>${esc(a.title)}</strong>
           <div class="description">${esc(a.description)}</div>
@@ -292,7 +293,7 @@ async function loadDevices() {
     const tbody = document.getElementById('devices-body');
     tbody.innerHTML = devices.map(d => `
       <tr>
-        <td><code>${esc(d.ip)}</code></td>
+        <td><a href="/devices/${encodeURIComponent(d.ip)}"><code>${esc(d.ip)}</code></a></td>
         <td><code>${esc(d.mac)}</code></td>
         <td>${esc(d.hostname || '')}${d.vendor ? `<br><small style="color:var(--muted)">${esc(d.vendor)}</small>` : ''}</td>
         <td><small>${fmtTime(d.first_seen)}</small></td>
@@ -325,7 +326,7 @@ async function loadSuspicious() {
     }
     tbody.innerHTML = hosts.map(h => `
       <tr>
-        <td><code>${esc(h.ip)}</code></td>
+        <td><a href="/devices/${encodeURIComponent(h.ip)}"><code>${esc(h.ip)}</code></a></td>
         <td><code>${esc(h.mac)}</code></td>
         <td>${esc(h.vendor || '—')}</td>
         <td style="color:${scoreColor(h.suspicion_score)}; font-weight:bold">${parseFloat(h.suspicion_score).toFixed(2)}</td>

@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SentinelPi Host Detail</title>
+<style>
+  :root {
+    --bg: #0f1117; --surface: #1a1d27; --border: #2d3148;
+    --text: #e2e8f0; --muted: #94a3b8; --accent: #6366f1;
+    --info: #06b6d4; --low: #22c55e; --medium: #f59e0b;
+    --high: #ef4444; --critical: #dc2626;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'JetBrains Mono', 'Courier New', monospace; background: var(--bg); color: var(--text); padding: 1rem; }
+  a { color: var(--info); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  h1 { color: var(--accent); font-size: 1.3rem; margin: 0.25rem 0; overflow-wrap: anywhere; }
+  .subtitle { color: var(--muted); font-size: 0.8rem; margin-bottom: 1.25rem; }
+  .topbar { display: flex; justify-content: space-between; gap: 1rem; align-items: center; margin-bottom: 0.75rem; }
+  .topbar span { color: var(--muted); font-size: 0.72rem; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 1rem; margin-bottom: 1.5rem; }
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 1rem; min-width: 0; }
+  .card h3 { font-size: 0.72rem; color: var(--muted); text-transform: uppercase; margin-bottom: 0.5rem; }
+  .card .val { font-size: 1.4rem; font-weight: bold; overflow-wrap: anywhere; }
+  .section { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; margin-bottom: 1.5rem; overflow: hidden; }
+  .section-header { padding: 0.75rem 1rem; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; gap: 1rem; align-items: center; }
+  .section-header h2 { font-size: 0.95rem; }
+  .section-content { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
+  th { background: var(--surface); color: var(--muted); text-transform: uppercase; font-size: 0.7rem; padding: 8px 12px; text-align: left; border-bottom: 1px solid var(--border); }
+  td { padding: 8px 12px; border-bottom: 1px solid var(--border); vertical-align: top; overflow-wrap: anywhere; }
+  tr:hover td { background: rgba(99,102,241,0.05); }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 0.7rem; font-weight: bold; text-transform: uppercase; }
+  .badge-info { background: #083344; color: var(--info); }
+  .badge-low { background: #052e16; color: var(--low); }
+  .badge-medium { background: #431407; color: var(--medium); }
+  .badge-high { background: #3f0a0a; color: var(--high); }
+  .badge-critical { background: #450a0a; color: var(--critical); }
+  .description { color: var(--muted); font-size: 0.75rem; max-width: 560px; }
+  .loading { color: var(--muted); padding: 2rem; text-align: center; }
+  .pill-list { display: flex; flex-wrap: wrap; gap: 0.4rem; padding: 1rem; }
+  .pill { border: 1px solid var(--border); border-radius: 4px; padding: 3px 8px; color: var(--text); background: var(--bg); font-size: 0.75rem; }
+  .live-ok { color: var(--low); }
+  .live-warn { color: var(--medium); }
+</style>
+</head>
+<body>
+<div class="topbar">
+  <a href="/">Back to dashboard</a>
+  <span>Updates: <span id="live-status" class="live-warn">Polling</span></span>
+</div>
+
+<h1>Host <code id="host-ip">{{ ip }}</code></h1>
+<p class="subtitle">Device identity, recent alerts, learned behavior, and responder history.</p>
+
+<div class="grid">
+  <div class="card"><h3>Hostname</h3><div class="val" id="hostname">-</div></div>
+  <div class="card"><h3>Vendor</h3><div class="val" id="vendor">-</div></div>
+  <div class="card"><h3>Suspicion</h3><div class="val" id="suspicion">-</div></div>
+  <div class="card"><h3>Alerts</h3><div class="val" id="alert-count">-</div></div>
+  <div class="card"><h3>Last Seen</h3><div class="val" id="last-seen">-</div></div>
+</div>
+
+<div class="section">
+  <div class="section-header"><h2>Recent Alerts</h2><span class="description">Last 30 days</span></div>
+  <div class="section-content">
+    <table>
+      <thead><tr><th>Time</th><th>Severity</th><th>Category</th><th>Title</th><th>Status</th></tr></thead>
+      <tbody id="alerts-body"><tr><td colspan="5" class="loading">Loading...</td></tr></tbody>
+    </table>
+  </div>
+</div>
+
+<div class="section">
+  <div class="section-header"><h2>Known Destinations</h2><span class="description">Learned baseline</span></div>
+  <div class="section-content">
+    <table>
+      <thead><tr><th>Destination</th><th>Port</th><th>Protocol</th><th>Hits</th><th>Last Seen</th></tr></thead>
+      <tbody id="destinations-body"><tr><td colspan="5" class="loading">Loading...</td></tr></tbody>
+    </table>
+  </div>
+</div>
+
+<div class="section">
+  <div class="section-header"><h2>DNS History</h2><span class="description">Recent observed queries</span></div>
+  <div class="section-content">
+    <table>
+      <thead><tr><th>Domain</th><th>Type</th><th>Queries</th><th>NXDOMAIN</th><th>Last Seen</th></tr></thead>
+      <tbody id="dns-body"><tr><td colspan="5" class="loading">Loading...</td></tr></tbody>
+    </table>
+  </div>
+</div>
+
+<div class="section">
+  <div class="section-header"><h2>Host Profile</h2><span class="description">Learned behavior dimensions</span></div>
+  <div class="pill-list" id="profile-body"><span class="loading">Loading...</span></div>
+</div>
+
+<div class="section">
+  <div class="section-header"><h2>Response Actions</h2><span class="description">Actions tied to this host</span></div>
+  <div class="section-content">
+    <table>
+      <thead><tr><th>Created</th><th>Responder</th><th>Action</th><th>Status</th><th>Result</th></tr></thead>
+      <tbody id="responses-body"><tr><td colspan="5" class="loading">Loading...</td></tr></tbody>
+    </table>
+  </div>
+</div>
+
+<script>
+const HOST_IP = {{ ip|tojson }};
+
+function esc(s) {
+  const d = document.createElement('div');
+  d.textContent = s || '';
+  return d.innerHTML;
+}
+function fmtTime(iso) {
+  if (!iso) return '-';
+  return new Date(iso).toLocaleString();
+}
+function sevBadge(sev) {
+  return `<span class="badge badge-${sev}">${sev}</span>`;
+}
+function responseBadge(status) {
+  const cls = {pending: 'medium', executed: 'low', failed: 'high',
+               rejected: 'info', planned: 'info'}[status] || 'info';
+  return `<span class="badge badge-${cls}">${esc(status)}</span>`;
+}
+function scoreColor(score) {
+  if (score >= 5) return 'var(--critical)';
+  if (score >= 3) return 'var(--high)';
+  if (score >= 1) return 'var(--medium)';
+  return 'var(--low)';
+}
+async function apiFetch(url, opts) {
+  const r = await fetch(url, opts);
+  if (r.status === 401) {
+    window.location = '/login';
+    throw new Error('session expired');
+  }
+  return r;
+}
+function emptyRow(colspan, text) {
+  return `<tr><td colspan="${colspan}" class="loading">${text}</td></tr>`;
+}
+function renderPills(label, values) {
+  if (!values || !values.length) return '';
+  return `<span class="pill">${esc(label)}: ${values.map(esc).join(', ')}</span>`;
+}
+
+function render(data) {
+  const d = data.device;
+  document.getElementById('hostname').textContent = d.hostname || '-';
+  document.getElementById('vendor').textContent = d.vendor || '-';
+  document.getElementById('suspicion').textContent = d.suspicion_score.toFixed(1);
+  document.getElementById('suspicion').style.color = scoreColor(d.suspicion_score);
+  document.getElementById('alert-count').textContent = d.alert_count;
+  document.getElementById('last-seen').textContent = fmtTime(d.last_seen);
+
+  const alertsBody = document.getElementById('alerts-body');
+  alertsBody.innerHTML = data.recent_alerts.length ? data.recent_alerts.map(a => `
+    <tr>
+      <td style="white-space:nowrap">${fmtTime(a.timestamp)}</td>
+      <td>${sevBadge(a.severity)}</td>
+      <td>${esc(a.category)}</td>
+      <td><strong>${esc(a.title)}</strong><div class="description">${esc(a.description)}</div></td>
+      <td>${esc(a.status)}</td>
+    </tr>
+  `).join('') : emptyRow(5, 'No alerts for this host in the last 30 days.');
+
+  const destinationsBody = document.getElementById('destinations-body');
+  destinationsBody.innerHTML = data.known_destinations.length ? data.known_destinations.map(row => `
+    <tr>
+      <td><code>${esc(row.dst_ip)}</code></td>
+      <td>${row.dst_port}</td>
+      <td>${esc(row.protocol)}</td>
+      <td>${row.hit_count}</td>
+      <td>${fmtTime(row.last_seen)}</td>
+    </tr>
+  `).join('') : emptyRow(5, 'No learned destinations yet.');
+
+  const dnsBody = document.getElementById('dns-body');
+  dnsBody.innerHTML = data.dns_history.length ? data.dns_history.map(row => `
+    <tr>
+      <td>${esc(row.query_name)}</td>
+      <td>${esc(row.query_type || '-')}</td>
+      <td>${row.query_count}</td>
+      <td>${row.nxdomain_count || 0}</td>
+      <td>${fmtTime(row.last_seen)}</td>
+    </tr>
+  `).join('') : emptyRow(5, 'No DNS observations yet.');
+
+  const p = data.host_profile || {};
+  const profile = [
+    renderPills('Destination ports', p.destination_ports),
+    renderPills('Internal peers', p.internal_peers),
+    renderPills('Active hours', (p.active_hours || []).map(h => `${h}:00`)),
+    renderPills('Countries', p.countries),
+  ].filter(Boolean);
+  document.getElementById('profile-body').innerHTML = profile.length
+    ? profile.join('')
+    : '<span class="loading">No learned host profile values yet.</span>';
+
+  const responsesBody = document.getElementById('responses-body');
+  responsesBody.innerHTML = data.response_actions.length ? data.response_actions.map(a => `
+    <tr>
+      <td style="white-space:nowrap">${fmtTime(a.created_at)}</td>
+      <td>${esc(a.responder)}</td>
+      <td>${esc(a.description)}${a.dry_run ? ' <span class="badge badge-info">DRY RUN</span>' : ''}</td>
+      <td>${responseBadge(a.status)}</td>
+      <td>${a.error ? esc(a.error) : (a.success ? 'success' : '-')}</td>
+    </tr>
+  `).join('') : emptyRow(5, 'No response actions for this host.');
+}
+
+async function loadDeviceDetail() {
+  try {
+    const r = await apiFetch(`/api/devices/${encodeURIComponent(HOST_IP)}/detail`);
+    if (r.status === 404) {
+      document.body.innerHTML = '<p class="loading">Host not found.</p>';
+      return;
+    }
+    render(await r.json());
+  } catch (e) {
+    console.error('Device detail load failed:', e);
+  }
+}
+
+let pollingStarted = false;
+let liveEvents = null;
+
+function setLiveStatus(text, ok) {
+  const el = document.getElementById('live-status');
+  el.textContent = text;
+  el.className = ok ? 'live-ok' : 'live-warn';
+}
+function startPollingFallback() {
+  if (pollingStarted) return;
+  pollingStarted = true;
+  setLiveStatus('Polling', false);
+  setInterval(loadDeviceDetail, 30000);
+}
+function connectLiveUpdates() {
+  if (!window.EventSource) {
+    startPollingFallback();
+    return;
+  }
+  liveEvents = new EventSource('/api/events');
+  liveEvents.addEventListener('dashboard', () => {
+    setLiveStatus('Live', true);
+    loadDeviceDetail();
+  });
+  liveEvents.onerror = () => {
+    if (liveEvents) liveEvents.close();
+    startPollingFallback();
+  };
+}
+
+loadDeviceDetail();
+connectLiveUpdates();
+</script>
+</body>
+</html>
