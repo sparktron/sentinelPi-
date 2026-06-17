@@ -53,6 +53,11 @@ sentinelpi = "sentinelpi.main:main"
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.setuptools.package-data]
+# Ship the dashboard HTML templates inside the wheel; without this they are
+# left out (only .py modules are packaged) and the installed dashboard 500s.
+"sentinelpi.ui" = ["templates/*.html"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]

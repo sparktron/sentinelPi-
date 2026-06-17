@@ -46,3 +46,36 @@ jobs:
 
       - name: Run test suite
         run: pytest tests/ -q --cov=sentinelpi --cov-report=term-missing --cov-report=xml
+
+  package:
+    name: Packaging smoke test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Build sdist and wheel
+        run: |
+          python -m pip install --upgrade pip build
+          python -m build
+
+      - name: Install the built wheel into a clean venv and smoke-test it
+        # Catches packaging regressions the src-layout test run can't: missing
+        # packages in the wheel, a broken console entry point, or missing
+        # runtime deps. Installs the artifact fresh, then exercises it.
+        run: |
+          python -m venv /tmp/smoke
+          /tmp/smoke/bin/pip install dist/*.whl
+          /tmp/smoke/bin/sentinelpi --version
+          /tmp/smoke/bin/python -c "import sentinelpi; print('import OK', sentinelpi.__version__)"
+          # Confirm packaged data files (dashboard templates) shipped in the wheel.
+          /tmp/smoke/bin/python -c "import importlib.resources as r; \
+            [r.files('sentinelpi.ui').joinpath('templates', t).read_text() \
+             for t in ('dashboard.html', 'device.html', 'login.html')]; \
+            print('templates OK')"
