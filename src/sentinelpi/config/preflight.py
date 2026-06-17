@@ -63,7 +63,8 @@ def run_preflight(config) -> List[CheckResult]:
 # --------------------------------------------------------------------- notifiers
 def _check_notifiers(config) -> List[CheckResult]:
     from ..alerts.notifiers import (
-        EmailNotifier, WebhookNotifier, NtfyNotifier, TwilioSMSNotifier, ForwardNotifier,
+        EmailNotifier, WebhookNotifier, NtfyNotifier, TwilioSMSNotifier, SyslogNotifier,
+        ForwardNotifier,
     )
 
     n = config.notifications
@@ -78,6 +79,8 @@ def _check_notifiers(config) -> List[CheckResult]:
         specs.append(("notifier:ntfy", lambda: NtfyNotifier(config)))
     if n.sms_enabled:
         specs.append(("notifier:twilio-sms", lambda: TwilioSMSNotifier(config)))
+    if n.siem_enabled and n.siem_host:
+        specs.append(("notifier:siem", lambda: SyslogNotifier(config)))
     if config.cluster.role == "sensor" and config.cluster.collector_url:
         specs.append(("notifier:forward", lambda: ForwardNotifier(config)))
 

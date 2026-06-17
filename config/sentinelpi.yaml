@@ -274,6 +274,18 @@ notifications:
   sms_to: []                      # e.g., ["+15557654321"]
   sms_min_severity: critical
 
+  # SIEM export: stream alerts to a syslog collector (Splunk, Elastic, QRadar,
+  # ArcSight, Graylog) in a SIEM-friendly payload format.
+  #   siem_format:    "ecs" (Elastic Common Schema JSON) or "cef" (ArcSight CEF)
+  #   siem_transport: "udp" (one datagram per alert) or "tcp" (newline-framed)
+  siem_enabled: false
+  siem_format: ecs
+  siem_transport: udp
+  siem_host: "127.0.0.1"
+  siem_port: 514
+  siem_facility: local0           # syslog facility: user, daemon, local0-local7
+  siem_min_severity: low
+
 # =============================================================================
 # REPORTING
 # =============================================================================

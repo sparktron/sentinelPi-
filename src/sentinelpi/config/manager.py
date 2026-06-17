@@ -115,6 +115,18 @@ class NotificationConfig:
     sms_to: List[str] = field(default_factory=list)
     sms_min_severity: str = "critical"
 
+    # SIEM export: stream alerts to a syslog collector in a SIEM-friendly
+    # payload format. ``siem_format`` is "ecs" (Elastic Common Schema JSON)
+    # or "cef" (ArcSight Common Event Format); ``siem_transport`` is "udp"
+    # or "tcp". TCP frames are newline-delimited (RFC 6587 non-transparent).
+    siem_enabled: bool = False
+    siem_format: str = "ecs"
+    siem_transport: str = "udp"
+    siem_host: str = "127.0.0.1"
+    siem_port: int = 514
+    siem_facility: str = "local0"
+    siem_min_severity: str = "low"
+
 
 @dataclass
 class DashboardConfig:
@@ -523,6 +535,8 @@ def _apply_sensitivity_profile(config: Config) -> None:
 
 def validate_config(config: Config) -> List[ConfigIssue]:
     """Return all validation issues that should block daemon startup."""
+    from ..alerts.siem import SYSLOG_FACILITIES
+
     issues: List[ConfigIssue] = []
 
     def add(path: str, message: str) -> None:
@@ -682,6 +696,18 @@ def validate_config(config: Config) -> List[ConfigIssue]:
             )
         if not config.notifications.sms_to:
             add("notifications.sms_to", "must include at least one recipient when SMS notifications are enabled")
+
+    check_severity("notifications.siem_min_severity", config.notifications.siem_min_severity)
+    if config.notifications.siem_format not in {"ecs", "cef"}:
+        add("notifications.siem_format", "must be one of: ecs, cef")
+    if config.notifications.siem_transport not in {"udp", "tcp"}:
+        add("notifications.siem_transport", "must be one of: udp, tcp")
+    if config.notifications.siem_facility not in SYSLOG_FACILITIES:
+        add("notifications.siem_facility",
+            f"must be one of: {', '.join(sorted(SYSLOG_FACILITIES))}")
+    check_port("notifications.siem_port", config.notifications.siem_port)
+    if config.notifications.siem_enabled and not config.notifications.siem_host:
+        add("notifications.siem_host", "is required when SIEM export is enabled")
 
     check_non_negative_int("storage.retention_days", config.storage.retention_days)
     check_non_negative_int("storage.vacuum_interval_seconds", config.storage.vacuum_interval_seconds)

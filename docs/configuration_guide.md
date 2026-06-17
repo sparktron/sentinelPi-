@@ -219,6 +219,34 @@ notifications:
 Run `sentinelpi --check` after configuring SMS. The preflight sends a labelled test SMS so you can
 verify credentials, sender registration, and delivery before trusting it for real alerts.
 
+### SIEM export (syslog: ECS / CEF)
+
+Stream alerts to a SIEM or log pipeline over syslog. Each alert is rendered in a SIEM-friendly
+payload and wrapped in an RFC 5424 frame, so platforms like Splunk, Elastic, Graylog, QRadar, and
+ArcSight can parse it directly.
+
+- `siem_format`: `ecs` emits an [Elastic Common Schema](https://www.elastic.co/guide/en/ecs/current/index.html)
+  JSON document (best for Elastic/Splunk); `cef` emits an ArcSight Common Event Format line (best for
+  QRadar/ArcSight).
+- `siem_transport`: `udp` sends one datagram per alert; `tcp` sends newline-delimited frames
+  (RFC 6587 non-transparent framing) for reliable, ordered delivery.
+
+```yaml
+notifications:
+  siem_enabled: true
+  siem_format: ecs                  # ecs | cef
+  siem_transport: udp               # udp | tcp
+  siem_host: "10.0.0.5"             # collector / syslog receiver
+  siem_port: 514
+  siem_facility: local0             # user, daemon, or local0-local7
+  siem_min_severity: low
+```
+
+Alert severity is mapped to the syslog severity (and to the 0-10 CEF scale / numeric ECS
+`event.severity`), so collector-side severity routing works without extra parsing. Run
+`sentinelpi --check` to send a labelled test event through the configured transport before relying
+on it.
+
 ## Whole-Network Coverage (Phase 3)
 
 By default SentinelPi sees its own host plus whatever the LAN segment lets it
@@ -351,8 +379,9 @@ sentinelpi --check
 `--check` runs the same static validation and then **actively exercises your configured outputs**:
 
 - **Notifiers** — connects to SMTP (authenticating, but sending no mail) and delivers a clearly
-  labelled test notification through each enabled webhook / ntfy / forward channel. This catches a
-  wrong URL, bad token, or failed auth before a real alert needs to go out.
+  labelled test notification through each enabled webhook / ntfy / SMS / SIEM / forward channel. This
+  catches a wrong URL, bad token, unreachable collector, or failed auth before a real alert needs to
+  go out.
 - **Responders** — asks each enabled responder to *plan* a synthetic alert. Planning is
   side-effect-free, so **nothing is ever executed**; the output shows what each responder *would*
   do (e.g. `would: Block 203.0.113.10 (iptables)`).

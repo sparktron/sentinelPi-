@@ -46,6 +46,41 @@ def test_validate_config_rejects_invalid_ports_and_enums():
     assert "response.firewall_backend" in paths
 
 
+def test_validate_config_rejects_invalid_siem_settings():
+    config = Config()
+    n = config.notifications
+    n.siem_enabled = True
+    n.siem_host = ""
+    n.siem_format = "logstash"
+    n.siem_transport = "carrier-pigeon"
+    n.siem_facility = "local99"
+    n.siem_port = 70000
+    n.siem_min_severity = "urgent"
+
+    paths = _issue_paths(config)
+
+    assert "notifications.siem_host" in paths
+    assert "notifications.siem_format" in paths
+    assert "notifications.siem_transport" in paths
+    assert "notifications.siem_facility" in paths
+    assert "notifications.siem_port" in paths
+    assert "notifications.siem_min_severity" in paths
+
+
+def test_validate_config_accepts_valid_siem_settings():
+    config = Config()
+    n = config.notifications
+    n.siem_enabled = True
+    n.siem_format = "cef"
+    n.siem_transport = "tcp"
+    n.siem_facility = "local4"
+    n.siem_host = "10.0.0.5"
+    n.siem_port = 6514
+    n.siem_min_severity = "medium"
+
+    assert validate_config(config) == []
+
+
 def test_validate_config_rejects_incomplete_sms_settings():
     config = Config()
     config.notifications.sms_enabled = True

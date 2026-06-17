@@ -12,6 +12,7 @@ Available notifiers:
 - WebhookNotifier: HTTP POST to a URL (optional).
 - NtfyNotifier: ntfy push with Approve/Reject action buttons (optional).
 - TwilioSMSNotifier: SMS via Twilio Programmable Messaging (optional).
+- SyslogNotifier: SIEM export over syslog in ECS or CEF format (optional).
 """
 
 from __future__ import annotations
@@ -717,3 +718,100 @@ class ForwardNotifier(BaseNotifier):
             else:
                 kwargs["cert"] = self._cluster.tls_client_cert
         return kwargs
+
+
+class SyslogNotifier(BaseNotifier):
+    """
+    Streams alerts to a SIEM collector over syslog (UDP or TCP).
+
+    Each alert is rendered in a SIEM-friendly payload format — ECS (Elastic
+    Common Schema JSON) or CEF (ArcSight Common Event Format) — then wrapped in
+    an RFC 5424 syslog frame. Delivery is async (queue + worker) like the other
+    network notifiers, so a slow or unreachable collector never blocks
+    detection. TCP frames are newline-delimited (RFC 6587 non-transparent
+    framing); UDP sends one datagram per alert.
+    """
+
+    def __init__(self, config: Config) -> None:
+        from .. import __version__
+
+        n = config.notifications
+        self._format = n.siem_format
+        self._transport = n.siem_transport
+        self._host = n.siem_host
+        self._port = n.siem_port
+        self._facility = n.siem_facility
+        self._min_severity = Severity(n.siem_min_severity)
+        self._version = __version__
+        self._hostname = socket.gethostname()
+        self._queue: "queue.Queue[Alert]" = queue.Queue(maxsize=1000)
+        self._stop_event = threading.Event()
+        self._thread = threading.Thread(target=self._worker, daemon=True, name="SyslogNotifier")
+        self._thread.start()
+
+    def send(self, alert: Alert) -> None:
+        if not self._host:
+            return
+        if alert.severity < self._min_severity:
+            return
+        if self._stop_event.is_set():
+            logger.warning("Syslog notifier is stopping — dropping alert.")
+            return
+        try:
+            self._queue.put_nowait(alert)
+        except queue.Full:
+            logger.warning("Syslog queue full — dropping alert.")
+
+    def _worker(self) -> None:
+        while not self._stop_event.is_set() or not self._queue.empty():
+            try:
+                alert = self._queue.get(timeout=0.5)
+            except queue.Empty:
+                continue
+            try:
+                self._emit(alert)
+            except Exception as exc:
+                logger.warning("Syslog export failed: %s", exc)
+
+    def close(self, timeout: float = 5.0) -> None:
+        self._stop_event.set()
+        self._thread.join(timeout=timeout)
+        if self._thread.is_alive():
+            logger.warning("Syslog notifier did not stop cleanly.")
+
+    def preflight(self) -> tuple[bool, str]:
+        if not self._host:
+            return (True, "disabled")
+        try:
+            self._emit(_preflight_alert())
+        except Exception as exc:
+            return (False, f"syslog {self._transport}://{self._host}:{self._port}: {exc}")
+        return (True, f"sent test event to {self._transport}://{self._host}:{self._port} ({self._format})")
+
+    def _render(self, alert: Alert) -> str:
+        from . import siem
+
+        if self._format == "cef":
+            payload = siem.format_cef(alert, product_version=self._version)
+        else:
+            payload = siem.format_ecs_line(alert, product_version=self._version)
+        return siem.format_syslog(
+            payload,
+            severity=alert.severity,
+            timestamp_iso=siem._aware_utc_iso(alert),
+            hostname=self._hostname,
+            facility=self._facility,
+        )
+
+    def _emit(self, alert: Alert) -> None:
+        message = self._render(alert)
+        self._transmit(message.encode("utf-8"))
+
+    def _transmit(self, data: bytes) -> None:
+        """Send one framed message to the collector. Raises on failure."""
+        if self._transport == "tcp":
+            with socket.create_connection((self._host, self._port), timeout=10) as sock:
+                sock.sendall(data + b"\n")
+        else:
+            with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
+                sock.sendto(data, (self._host, self._port))

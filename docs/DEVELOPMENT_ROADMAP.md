@@ -28,8 +28,9 @@ configured notifiers/responders in preflight mode, and per-host destination-port
 profile dimensions are shipped. Dashboard live updates are shipped via server-sent events with a
 polling fallback. Host drill-down pages are shipped with device identity, recent alerts, known
 destinations, DNS history, host profile values, response-action history, and dashboard links from
-host IPs. Next implementation pass should move into SIEM-friendly export formats or
-backup/restore. Twilio SMS alerts are also shipped as a notification-channel expansion.
+host IPs. Twilio SMS alerts are also shipped as a notification-channel expansion. SIEM-friendly
+export (syslog ECS/CEF via `SyslogNotifier`) is shipped. Next implementation pass should move into
+backup/restore for the SQLite database and baseline state.
 
 ### Critical
 
@@ -227,7 +228,10 @@ Exit criteria:
   responder history. _Shipped (2026-06-14): host IP links open `/devices/<ip>` pages backed by
   `/api/devices/<ip>/detail`, including recent alerts, known destinations, DNS summaries, learned
   host profile values, active hours/countries, and matching response actions._
-- Add SIEM-friendly export formats: ECS-style JSON, syslog/CEF, or OpenTelemetry logs.
+- ✅ Add SIEM-friendly export formats: ECS-style JSON, syslog/CEF, or OpenTelemetry logs. _Shipped
+  (2026-06-16): `SyslogNotifier` streams alerts to a syslog collector in ECS (Elastic Common Schema
+  JSON) or CEF (ArcSight) payloads over UDP/TCP, with severity/facility mapping and RFC 5424 framing;
+  pure formatters live in `alerts/siem.py` and the channel participates in `sentinelpi --check`._
 - Add backup/restore for the SQLite database and baseline state.
 
 Exit criteria:

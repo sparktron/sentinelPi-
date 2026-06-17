@@ -50,7 +50,7 @@ from .inventory.device_tracker import DeviceTracker
 from .alerts.manager import AlertManager
 from .alerts.notifiers import (
     ConsoleNotifier, FileNotifier, EmailNotifier, WebhookNotifier, NtfyNotifier, TwilioSMSNotifier,
-    ForwardNotifier,
+    SyslogNotifier, ForwardNotifier,
 )
 from .responders.manager import ResponderManager
 from .responders.firewall import FirewallResponder
@@ -356,6 +356,15 @@ class SentinelPi:
             self._alert_manager.add_notifier(TwilioSMSNotifier(self.config))
             logger.info("Twilio SMS notifications enabled for %d recipient(s).",
                         len(self.config.notifications.sms_to))
+
+        # Optional: SIEM export over syslog (ECS or CEF)
+        if self.config.notifications.siem_enabled and self.config.notifications.siem_host:
+            self._alert_manager.add_notifier(SyslogNotifier(self.config))
+            logger.info("SIEM export enabled: %s syslog %s://%s:%d",
+                        self.config.notifications.siem_format,
+                        self.config.notifications.siem_transport,
+                        self.config.notifications.siem_host,
+                        self.config.notifications.siem_port)
 
         # Sensor mode: forward alerts to a central collector (Phase 3).
         if self.config.cluster.role == "sensor" and self.config.cluster.collector_url:
