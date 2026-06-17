@@ -159,11 +159,14 @@ class FileNotifier(BaseNotifier):
         try:
             line = json.dumps(self._alert_to_dict(alert), default=str)
             with self._lock:
-                self._handler.stream.write(line + "\n")
-                self._handler.stream.flush()
+                stream = self._handler.stream
+                if stream is None:
+                    return  # handler closed; nothing to write to
+                stream.write(line + "\n")
+                stream.flush()
                 # Size-based rollover. RotatingFileHandler.shouldRollover needs a
                 # LogRecord (we have none), so check the byte budget directly.
-                if self._handler.maxBytes > 0 and self._handler.stream.tell() >= self._handler.maxBytes:
+                if self._handler.maxBytes > 0 and stream.tell() >= self._handler.maxBytes:
                     self._handler.doRollover()
         except Exception as exc:
             logger.error("FileNotifier write failed: %s", exc)
