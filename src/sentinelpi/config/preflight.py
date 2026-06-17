@@ -15,14 +15,20 @@ Two kinds of check:
   it should handle. Planning is side-effect-free by contract, so nothing is ever
   executed — this just confirms the responder is wired and shows what it *would*
   do.
+- Environment: the optional files (GeoIP DBs, auth log, DHCP leases, monitored
+  paths) and binaries (firewall/ARP/DNS-sinkhole backends, packet capture) that
+  *enabled* features depend on. A missing one is reported as ``warn`` — the
+  feature runs degraded or disabled, but the daemon still starts.
 
 Returns structured :class:`CheckResult` rows so the CLI can print them and pick
-an exit code.
+an exit code. Only ``fail`` rows change the exit code; ``warn`` is informational.
 """
 
 from __future__ import annotations
 
 import logging
+import os
+import shutil
 from dataclasses import dataclass
 from typing import Callable, List, Optional, Type
 
@@ -40,7 +46,12 @@ _PROBE_GATEWAY_MAC = "02:00:00:00:00:01"
 _PROBE_HOST_IP = "192.168.255.50"
 
 
-# status is one of: "ok", "fail", "skip"
+# status is one of: "ok", "fail", "skip", "warn"
+#   ok   - the thing works / is present
+#   fail - a configured output is broken (non-zero exit from --check)
+#   skip - feature not enabled, nothing to check
+#   warn - an enabled feature's optional dependency is missing, so it will run
+#          degraded or disabled; not fatal (does not change the exit code)
 @dataclass
 class CheckResult:
     name: str
@@ -57,7 +68,86 @@ def run_preflight(config) -> List[CheckResult]:
     results: List[CheckResult] = []
     results.extend(_check_notifiers(config))
     results.extend(_check_responders(config))
+    results.extend(_check_environment(config))
     return results
+
+
+# ------------------------------------------------------------------- environment
+def _check_environment(config) -> List[CheckResult]:
+    """
+    Probe the optional files and binaries that *enabled* features depend on, and
+    report which would run degraded. A missing dependency is a ``warn`` (the
+    daemon still starts; the feature is just disabled/limited), never a hard
+    ``fail`` — this is the config-doctor view of "what won't work as configured".
+    """
+    m = config.monitoring
+    results: List[CheckResult] = []
+
+    def need_file(name: str, path: str, purpose: str) -> None:
+        if os.path.isfile(path):
+            results.append(CheckResult(name, "ok", f"found {path}"))
+        else:
+            results.append(CheckResult(name, "warn", f"missing {path} — {purpose}"))
+
+    def need_binary(name: str, binary: str, purpose: str) -> None:
+        found = shutil.which(binary)
+        if found:
+            results.append(CheckResult(name, "ok", f"found {binary} ({found})"))
+        else:
+            results.append(CheckResult(name, "warn", f"'{binary}' not on PATH — {purpose}"))
+
+    # Detection inputs (optional data files / libraries).
+    if m.geo_enabled:
+        need_file("env:geoip-country", m.geo_db_path, "new-country detection disabled")
+    if m.asn_reputation_enabled:
+        need_file("env:geoip-asn", m.asn_db_path, "ASN-reputation detection disabled")
+    if m.auth_log_enabled:
+        need_file("env:auth-log", m.auth_log_path, "SSH/sudo auth monitoring disabled")
+    if m.dhcp_leases_enabled:
+        need_file("env:dhcp-leases", m.dhcp_leases_path, "DHCP-based device identity disabled")
+    if m.file_integrity_enabled:
+        missing = [p for p in m.file_integrity_paths if not os.path.exists(p)]
+        if missing:
+            results.append(CheckResult(
+                "env:file-integrity", "warn",
+                f"{len(missing)} monitored path(s) missing: {', '.join(missing[:3])}"
+                + ("..." if len(missing) > 3 else "")))
+        else:
+            results.append(CheckResult(
+                "env:file-integrity", "ok",
+                f"all {len(m.file_integrity_paths)} monitored path(s) present"))
+    if m.packet_capture_enabled:
+        if shutil.which("dumpcap") or _module_available("scapy"):
+            results.append(CheckResult("env:packet-capture", "ok", "scapy available"))
+        else:
+            results.append(CheckResult(
+                "env:packet-capture", "warn",
+                "scapy not installed — falling back to /proc polling (no packet capture)"))
+
+    # Responder backends (binaries needed only when armed responders are enabled).
+    rc = config.response
+    if rc.enabled:
+        if rc.firewall_block_enabled:
+            need_binary("env:firewall", rc.firewall_backend, "firewall blocking will fail")
+        if rc.arp_restore_enabled:
+            need_binary("env:arp-restore", rc.arp_restore_backend, "ARP restore will fail")
+        if rc.dns_sinkhole_enabled:
+            backend = rc.dns_sinkhole_backend
+            if backend == "pihole":
+                need_binary("env:dns-sinkhole", "pihole", "DNS sinkholing will fail")
+            elif backend == "unbound":
+                need_binary("env:dns-sinkhole", "unbound-control", "DNS sinkholing will fail")
+            else:  # hosts file
+                need_file("env:dns-sinkhole", "/etc/hosts", "DNS sinkholing will fail")
+
+    if not results:
+        return [CheckResult("environment", "skip", "no file/binary-dependent features enabled")]
+    return results
+
+
+def _module_available(name: str) -> bool:
+    import importlib.util
+    return importlib.util.find_spec(name) is not None
 
 
 # --------------------------------------------------------------------- notifiers

@@ -400,9 +400,15 @@ sentinelpi --check
 - **Responders** — asks each enabled responder to *plan* a synthetic alert. Planning is
   side-effect-free, so **nothing is ever executed**; the output shows what each responder *would*
   do (e.g. `would: Block 203.0.113.10 (iptables)`).
+- **Environment** — the optional files and binaries that *enabled* features depend on: GeoIP/ASN
+  databases, the auth log, DHCP leases, file-integrity paths, packet-capture support (scapy), and
+  responder backends (`iptables`/`nftables`, `arp`/`ip`, `pihole`/`unbound-control`, `/etc/hosts`).
+  A missing dependency is reported as `WARN` — the feature will run degraded or disabled, but the
+  daemon still starts, so it does **not** change the exit code.
 
-Exit codes: `0` = all good, `2` = invalid config, `3` = a preflight probe failed. Because `--check`
-delivers real test notifications, run it interactively rather than in unattended CI.
+Exit codes: `0` = all good, `2` = invalid config, `3` = a preflight probe failed. `WARN` rows
+(degraded features) are informational and never cause a non-zero exit. Because `--check` delivers
+real test notifications, run it interactively rather than in unattended CI.
 
 ## Backup & Restore
 

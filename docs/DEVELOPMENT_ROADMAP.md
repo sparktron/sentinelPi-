@@ -30,9 +30,12 @@ polling fallback. Host drill-down pages are shipped with device identity, recent
 destinations, DNS history, host profile values, response-action history, and dashboard links from
 host IPs. Twilio SMS alerts are also shipped as a notification-channel expansion. SIEM-friendly
 export (syslog ECS/CEF via `SyslogNotifier`) is shipped, as is database backup/restore via
-`--backup`/`--restore`. With Phase 4 complete, the next implementation pass should move into the
-remaining Phase 3 detection-quality work (byte-range/protocol-mix host profiles, adaptive per-host
-thresholds, and alert explainability) or the open daily-report health summaries.
+`--backup`/`--restore`. All four phases are complete (2026-06-17): the remaining Phase 3
+detection-quality work (byte-range/protocol-mix host profiles, adaptive per-host thresholds, and
+alert explainability across every detector) shipped, along with the last loose ends — daily-report
+health summaries, a packaging smoke test in CI, and the config-doctor environment probe. The backlog
+beyond this point is the forward-looking ideas in "Proposed New Features" (e.g. suspicion trend
+charts, OpenTelemetry export).
 
 ### Critical
 
@@ -151,8 +154,11 @@ thresholds, and alert explainability) or the open daily-report health summaries.
    - Keep coverage informational until thresholds are stable.
 
    Status update: compileall, ruff, mypy, and coverage XML are now wired into CI (2026-06-10 —
-   mypy passes clean on all 53 source files with stubs + `[tool.mypy]` config). Packaging smoke
-   tests remain the only open CI item.
+   mypy passes clean on all source files with stubs + `[tool.mypy]` config). ✅ Packaging smoke
+   test added (2026-06-17): a `package` CI job builds the sdist+wheel and installs the wheel into a
+   clean venv, then runs the console entry point and verifies the bundled dashboard templates ship
+   in the wheel — which surfaced and fixed a real packaging bug (templates were absent from the
+   wheel; now declared as `tool.setuptools.package-data`). CI is now fully closed out.
 
 ## Implementation Roadmap
 
@@ -272,8 +278,10 @@ Exit criteria:
 
 ## Proposed New Features
 
-- **Operational watchdog:** shipped for queue saturation, worker death, stale capture, threat-intel
-  refresh health, low disk, and `/api/status`; daily-report health summaries remain open.
+- **Operational watchdog:** ✅ shipped for queue saturation, worker death, stale capture,
+  threat-intel refresh health, low disk, and `/api/status`. Daily-report health summaries shipped
+  (2026-06-17): `/api/report/daily` now carries a `health` block condensing the watchdog snapshot
+  (overall healthy flag plus a plain-English list of anything degraded)._
 - **Host investigation view:** ✅ shipped for identity, recent alerts, active hours, countries,
   learned peers/destination ports, top DNS domains, known destinations, and recent responder
   actions. Follow-up: add suspicion trend charts and open-port rollups.
@@ -283,8 +291,10 @@ Exit criteria:
   actions with approve/reject buttons that call the existing response endpoints.
 - **Twilio SMS notifier:** ✅ shipped (2026-06-14) — high-signal alerts can be sent as SMS with
   preflight delivery checks and severity filtering.
-- **Config doctor:** ✅ active notifier/responder preflight is shipped via `--check`; follow-up is
-  probing optional files/binaries and printing degraded feature summaries.
+- **Config doctor:** ✅ shipped — active notifier/responder preflight via `--check`, plus (2026-06-17)
+  an environment probe that checks the optional files (GeoIP/ASN DBs, auth log, DHCP leases,
+  file-integrity paths) and binaries (firewall/ARP/DNS-sinkhole backends, packet capture) that
+  enabled features depend on, printing a `WARN` degraded-feature summary without failing the run.
 - **Baseline backup/restore:** ✅ shipped (2026-06-16) — `--backup`/`--restore` snapshot and restore
   the full SQLite database (learned DNS, destinations, active hours, countries, host profiles, and
   device inventory) for hardware replacement or SD-card recovery, with checksum/integrity
