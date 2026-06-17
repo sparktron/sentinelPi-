@@ -290,8 +290,11 @@ Exit criteria:
   (2026-06-17): a schema-v8 `suspicion_history` table records a point each time a host's running
   suspicion score changes (per alert), and the host page renders an inline-SVG sparkline of the
   trend (current/peak/point count). This host-investigation-view follow-up is now complete.
-- **Incident timeline engine:** combine related alerts into one narrative with first-seen, escalation,
-  affected hosts, and recommended next action.
+- **Incident timeline engine:** ✅ shipped — the single-host ordered sequence (Phase 3) and the
+  cross-sensor/cross-target correlated incident both now combine related alerts into one narrative.
+  As of 2026-06-17 the broad correlated incident also carries a structured `timeline`, `first_seen`,
+  `affected_hosts`, and `peak_severity` (escalation high-water mark) alongside its recommended next
+  action, rendered inline by the dashboard's existing incident-timeline view.
 - **Actionable ntfy notifier:** ✅ shipped (2026-06-10) — `NtfyNotifier` sends pending response
   actions with approve/reject buttons that call the existing response endpoints.
 - **Twilio SMS notifier:** ✅ shipped (2026-06-14) — high-signal alerts can be sent as SMS with

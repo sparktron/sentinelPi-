@@ -50,6 +50,19 @@ def test_incident_across_sensors(correlator):
     assert set(incident.extra["sensors"]) == {"pi-a", "pi-b"}
 
 
+def test_correlated_incident_carries_narrative(correlator):
+    correlator.observe(_alert(sensor="pi-a", severity=Severity.MEDIUM))
+    incident = correlator.observe(_alert(sensor="pi-b", severity=Severity.HIGH))
+    assert incident is not None
+    extra = incident.extra
+    # Narrative fields for the incident-timeline engine.
+    assert len(extra["timeline"]) == 2
+    assert extra["timeline"][0]["timestamp"] <= extra["timeline"][1]["timestamp"]
+    assert extra["affected_hosts"] == ["192.168.1.66"]
+    assert "first_seen" in extra
+    assert extra["peak_severity"] == "high"  # escalation high-water mark
+
+
 def test_incident_across_targets(correlator):
     inc = None
     for i in range(5):  # 5 distinct targets, single sensor

@@ -92,7 +92,6 @@ class IncidentCorrelator:
 
             sensors = {e.sensor for e in events}
             targets = {e.target for e in events if e.target}
-            categories = {e.category for e in events}
 
             triggered = (
                 len(sensors) >= self.config.min_sensors
@@ -108,7 +107,7 @@ class IncidentCorrelator:
 
             if sequence and not triggered:
                 return self._build_sequence_incident(actor, sequence)
-            return self._build_incident(actor, sensors, targets, categories, len(events))
+            return self._build_incident(actor, list(events))
 
     def _is_on_cooldown(self, actor: str, now) -> bool:
         last = self._last_incident.get(actor)
@@ -141,8 +140,43 @@ class IncidentCorrelator:
                     return matched
         return None
 
-    def _build_incident(self, actor, sensors, targets, categories, event_count) -> Alert:
+    @staticmethod
+    def _timeline_from_events(events: Iterable[_CorrelationEvent]) -> list[dict]:
+        """Render events (time-ordered) into the dashboard's incident-timeline shape."""
+        return [
+            {
+                "timestamp": event.timestamp.isoformat(),
+                "category": event.category,
+                "severity": event.severity,
+                "title": event.title,
+                "affected_host": event.affected_host,
+                "related_host": event.related_host,
+            }
+            for event in events
+        ]
+
+    @staticmethod
+    def _peak_severity(events: Iterable[_CorrelationEvent]) -> str:
+        """Highest severity seen among the contributing alerts (escalation high-water mark)."""
+        peak = Severity.INFO
+        for event in events:
+            try:
+                sev = Severity(event.severity)
+            except ValueError:
+                continue
+            if peak < sev:
+                peak = sev
+        return peak.value
+
+    def _build_incident(self, actor, events: list[_CorrelationEvent]) -> Alert:
+        sensors = sorted({e.sensor for e in events})
+        targets = sorted({e.target for e in events if e.target})
+        categories = sorted({e.category for e in events})
+        affected_hosts = sorted({e.affected_host for e in events if e.affected_host})
         n_sensors, n_targets = len(sensors), len(targets)
+        event_count = len(events)
+        first_seen = events[0].timestamp if events else clock.now()
+        peak_severity = self._peak_severity(events)
         severity = Severity.CRITICAL if (n_sensors >= 3 or n_targets >= 20) else Severity.HIGH
         logger.warning(
             "Correlated incident: %s — %d events, %d sensors, %d targets.",
@@ -154,15 +188,16 @@ class IncidentCorrelator:
             affected_host=actor,
             title=f"Correlated incident: {actor} active across {n_sensors} sensor(s), {n_targets} target(s)",
             description=(
-                f"{actor} generated {event_count} alerts within "
-                f"{self.config.window_seconds}s, spanning sensors {sorted(sensors)} and "
-                f"{n_targets} distinct target(s). Alert types involved: {sorted(categories)}. "
+                f"{actor} generated {event_count} alerts since {first_seen.isoformat()} "
+                f"(within {self.config.window_seconds}s), spanning sensors {sensors} and "
+                f"{n_targets} distinct target(s), peaking at {peak_severity.upper()} severity. "
+                f"Alert types involved: {categories}. "
                 "Correlating these into one incident points to a coordinated action "
                 "(e.g. a network-wide scan or lateral movement) rather than isolated noise."
             ),
             recommended_action=(
                 f"Treat {actor} as the focus of an active incident: investigate and consider "
-                "isolating it. Review the contributing alerts for scope."
+                "isolating it. Review the timeline below for scope and the affected hosts."
             ),
             confidence=0.8,
             confidence_rationale=(
@@ -172,25 +207,19 @@ class IncidentCorrelator:
             dedup_key=f"incident:{actor}",
             extra={
                 "actor": actor,
-                "sensors": sorted(sensors),
+                "sensors": sensors,
                 "target_count": n_targets,
+                "affected_hosts": affected_hosts,
                 "event_count": event_count,
-                "categories": sorted(categories),
+                "categories": categories,
+                "first_seen": first_seen.isoformat(),
+                "peak_severity": peak_severity,
+                "timeline": self._timeline_from_events(events),
             },
         )
 
     def _build_sequence_incident(self, actor: str, sequence: list[_CorrelationEvent]) -> Alert:
-        timeline = [
-            {
-                "timestamp": event.timestamp.isoformat(),
-                "category": event.category,
-                "severity": event.severity,
-                "title": event.title,
-                "affected_host": event.affected_host,
-                "related_host": event.related_host,
-            }
-            for event in sequence
-        ]
+        timeline = self._timeline_from_events(sequence)
         logger.warning(
             "Correlated single-host incident: %s — %s.",
             actor,
