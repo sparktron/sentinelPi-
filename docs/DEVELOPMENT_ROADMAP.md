@@ -315,6 +315,25 @@ Exit criteria:
   degraded (dead threads, stale capture, queue saturation, low disk, threat-intel refresh problems).
   The `/api/status` payload carries a compact `health` summary derived from the operational watchdog.
 
+## Future Directions
+
+Every item above is shipped; these are candidate next steps beyond the original review, not yet
+started. They are infrastructure/operations work rather than detection features.
+
+- **Tag a v1.0.0 release.** `pyproject` is already at `1.0.0`, the wheel builds and installs cleanly
+  (packaging smoke test is green in CI), and `master` is healthy. Cut an annotated `v1.0.0` tag and a
+  GitHub release with a changelog generated from git history, and attach the built sdist/wheel.
+  Establish a lightweight release process (e.g. a tag-triggered CI job that builds and publishes the
+  artifacts) for subsequent versions.
+- **Enforce a test-coverage gate.** CI already produces coverage (`--cov` + `coverage.xml`) but it is
+  informational. Pick a baseline threshold from the current measured coverage and fail the build
+  below it (`pytest --cov-fail-under=N`), so the test investment can't silently erode. Raise the
+  threshold opportunistically as coverage improves.
+- **Turnkey deployment packaging.** Make the Pi deployment story self-contained: a `systemd` service
+  unit (with the right capabilities/hardening for packet capture) and an install script, and/or a
+  container image. Goal is "install, drop in a config, start the service" without manual venv/EUID
+  fiddling. Pairs naturally with the v1.0.0 release.
+
 ## Validation Performed
 
 - `python -m pytest -q` passed: 292 tests after the Phase 1/early Phase 2 fixes.
