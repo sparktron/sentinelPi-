@@ -4,7 +4,7 @@ import json
 from datetime import datetime, timezone
 
 from sentinelpi.alerts import siem
-from sentinelpi.alerts.notifiers import SyslogNotifier
+from sentinelpi.alerts.notifiers import OTLPNotifier, SyslogNotifier
 from sentinelpi.config.manager import Config
 from sentinelpi.models import Alert, AlertCategory, Severity
 
@@ -137,3 +137,92 @@ def test_syslog_notifier_preflight_uses_transmit():
     assert ok is True
     assert sent  # preflight alert was rendered and transmitted
     assert "10.0.0.5:514" in detail
+
+
+# --- OTLP / OpenTelemetry export ---------------------------------------------
+
+def _otlp_log_record(doc: dict) -> dict:
+    return doc["resourceLogs"][0]["scopeLogs"][0]["logRecords"][0]
+
+
+def _otlp_attrs(doc: dict) -> dict:
+    return {a["key"]: a["value"] for a in _otlp_log_record(doc)["attributes"]}
+
+
+def test_format_otlp_envelope_and_severity():
+    doc = siem.format_otlp(_alert(), product_version="9.9.9", host_name="pi")
+    lr = _otlp_log_record(doc)
+    assert lr["severityText"] == "ERROR"  # HIGH -> ERROR band
+    assert lr["severityNumber"] == siem.OTLP_SEVERITY_NUMBER[Severity.HIGH]
+    assert lr["body"] == {"stringValue": "Port scan detected"}
+    # Unix nanoseconds, encoded as a string (OTLP/JSON int64 rule).
+    assert lr["timeUnixNano"] == str(int(_alert().timestamp.timestamp() * 1_000_000_000))
+    scope = doc["resourceLogs"][0]["scopeLogs"][0]["scope"]
+    assert scope["version"] == "9.9.9"
+
+
+def test_format_otlp_attribute_value_types():
+    attrs = _otlp_attrs(siem.format_otlp(_alert(extra={"ports": [22, 80]})))
+    assert attrs["source.ip"] == {"stringValue": "192.168.1.50"}
+    assert attrs["destination.ip"] == {"stringValue": "192.168.1.1"}
+    assert attrs["sentinelpi.confidence"] == {"doubleValue": 0.85}
+    # Nested extra is serialized as a JSON string value.
+    assert attrs["sentinelpi.extra"]["stringValue"]
+    assert json.loads(attrs["sentinelpi.extra"]["stringValue"]) == {"ports": [22, 80]}
+
+
+def test_format_otlp_resource_attributes():
+    doc = siem.format_otlp(_alert(), service_name="sensor-1", host_name="pi-lan")
+    res = {a["key"]: a["value"]["stringValue"] for a in doc["resourceLogs"][0]["resource"]["attributes"]}
+    assert res["service.name"] == "sensor-1"
+    assert res["host.name"] == "pi-lan"
+
+
+def test_format_otlp_is_json_serializable():
+    json.dumps(siem.format_otlp(_alert()))  # must not raise
+
+
+def _otlp_config(**overrides) -> Config:
+    config = Config()
+    n = config.notifications
+    n.otlp_enabled = True
+    n.otlp_endpoint = "http://collector:4318/v1/logs"
+    for key, value in overrides.items():
+        setattr(n, key, value)
+    return config
+
+
+def test_otlp_notifier_respects_min_severity():
+    notifier = OTLPNotifier(_otlp_config(otlp_min_severity="high"))
+    exported: list = []
+    notifier._export = lambda alert: exported.append(alert.alert_id)
+
+    notifier.send(_alert(severity=Severity.LOW))
+    notifier.send(_alert(severity=Severity.CRITICAL))
+    notifier.close(timeout=2)
+
+    assert len(exported) == 1
+    assert not notifier._thread.is_alive()
+
+
+def test_otlp_notifier_posts_payload(monkeypatch):
+    notifier = OTLPNotifier(_otlp_config(otlp_headers={"Authorization": "Bearer t"}))
+    captured = {}
+
+    class _Resp:
+        def raise_for_status(self):
+            pass
+
+    import requests
+    def _fake_post(url, json=None, headers=None, timeout=None):
+        captured.update(url=url, json=json, headers=headers, timeout=timeout)
+        return _Resp()
+    monkeypatch.setattr(requests, "post", _fake_post)
+
+    notifier.send(_alert(severity=Severity.HIGH))
+    notifier.close(timeout=2)
+
+    assert captured["url"] == "http://collector:4318/v1/logs"
+    assert captured["headers"]["Content-Type"] == "application/json"
+    assert captured["headers"]["Authorization"] == "Bearer t"
+    assert "resourceLogs" in captured["json"]

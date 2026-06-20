@@ -48,6 +48,23 @@ ECS_SEVERITY: dict[Severity, int] = {
     Severity.CRITICAL: 9,
 }
 
+# Severity -> OpenTelemetry SeverityNumber (1-24) and SeverityText. OTLP bands:
+# TRACE 1-4, DEBUG 5-8, INFO 9-12, WARN 13-16, ERROR 17-20, FATAL 21-24.
+OTLP_SEVERITY_NUMBER: dict[Severity, int] = {
+    Severity.INFO:     9,    # INFO
+    Severity.LOW:      11,   # INFO3
+    Severity.MEDIUM:   13,   # WARN
+    Severity.HIGH:     17,   # ERROR
+    Severity.CRITICAL: 21,   # FATAL
+}
+OTLP_SEVERITY_TEXT: dict[Severity, str] = {
+    Severity.INFO:     "INFO",
+    Severity.LOW:      "INFO",
+    Severity.MEDIUM:   "WARN",
+    Severity.HIGH:     "ERROR",
+    Severity.CRITICAL: "FATAL",
+}
+
 # Named syslog facilities operators are likely to route to a SIEM.
 SYSLOG_FACILITIES: dict[str, int] = {
     "user":   1,
@@ -217,3 +234,86 @@ def format_syslog(
     pri = fac * 8 + sev
     host = hostname or "-"
     return f"<{pri}>1 {timestamp_iso} {host} {app_name} {procid} - - {payload}"
+
+
+def _otlp_any_value(value) -> dict:
+    """Wrap a Python scalar as an OTLP AnyValue (JSON/HTTP encoding)."""
+    if isinstance(value, bool):
+        return {"boolValue": value}
+    if isinstance(value, int):
+        return {"intValue": str(value)}  # OTLP/JSON encodes int64 as a string
+    if isinstance(value, float):
+        return {"doubleValue": value}
+    if isinstance(value, str):
+        return {"stringValue": value}
+    return {"stringValue": json.dumps(value, default=str)}
+
+
+def _otlp_attributes(mapping: dict) -> list:
+    """Build an OTLP KeyValue list, skipping empty/None values."""
+    out = []
+    for key, value in mapping.items():
+        if value is None or value == "":
+            continue
+        out.append({"key": key, "value": _otlp_any_value(value)})
+    return out
+
+
+def _unix_nanos(alert: Alert) -> str:
+    """Alert timestamp as Unix nanoseconds (string, per OTLP/JSON int64 rules)."""
+    return str(int(alert.timestamp.timestamp() * 1_000_000_000))
+
+
+def format_otlp(
+    alert: Alert,
+    *,
+    service_name: str = "sentinelpi",
+    product_version: str = "1.0.0",
+    host_name: str = "",
+) -> dict:
+    """
+    Render an alert as an OpenTelemetry OTLP/HTTP JSON ``LogsData`` envelope
+    (one ``resourceLogs`` -> ``scopeLogs`` -> ``logRecords`` entry), ready to
+    POST to an OTLP logs endpoint (``/v1/logs``).
+    """
+    nanos = _unix_nanos(alert)
+    log_record = {
+        "timeUnixNano": nanos,
+        "observedTimeUnixNano": nanos,
+        "severityNumber": OTLP_SEVERITY_NUMBER.get(alert.severity, 9),
+        "severityText": OTLP_SEVERITY_TEXT.get(alert.severity, "INFO"),
+        "body": {"stringValue": alert.title},
+        "attributes": _otlp_attributes({
+            "event.id": alert.alert_id,
+            "event.category": alert.category.value,
+            "event.action": alert.category.value,
+            "event.severity": alert.severity.value,
+            "source.ip": alert.affected_host,
+            "source.mac": alert.affected_mac,
+            "destination.ip": alert.related_host,
+            "sentinelpi.confidence": round(alert.confidence, 3),
+            "sentinelpi.confidence_rationale": alert.confidence_rationale,
+            "sentinelpi.recommended_action": alert.recommended_action,
+            "sentinelpi.dedup_key": alert.dedup_key,
+            "sentinelpi.description": alert.description,
+            "sentinelpi.extra": alert.extra or None,
+        }),
+    }
+    resource_attrs = _otlp_attributes({
+        "service.name": service_name,
+        "service.version": product_version,
+        "host.name": host_name,
+    })
+    return {
+        "resourceLogs": [
+            {
+                "resource": {"attributes": resource_attrs},
+                "scopeLogs": [
+                    {
+                        "scope": {"name": "sentinelpi", "version": product_version},
+                        "logRecords": [log_record],
+                    }
+                ],
+            }
+        ]
+    }

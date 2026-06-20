@@ -33,9 +33,10 @@ export (syslog ECS/CEF via `SyslogNotifier`) is shipped, as is database backup/r
 `--backup`/`--restore`. All four phases are complete (2026-06-17): the remaining Phase 3
 detection-quality work (byte-range/protocol-mix host profiles, adaptive per-host thresholds, and
 alert explainability across every detector) shipped, along with the last loose ends — daily-report
-health summaries, a packaging smoke test in CI, and the config-doctor environment probe. The backlog
-beyond this point is the forward-looking ideas in "Proposed New Features" (e.g. suspicion trend
-charts, OpenTelemetry export).
+health summaries, a packaging smoke test in CI, and the config-doctor environment probe. The
+"Proposed New Features" backlog is also fully shipped (host suspicion-trend charts, open-port
+rollups, dashboard health badges, the incident-timeline narrative, and OpenTelemetry/OTLP export).
+No tracked work remains open.
 
 ### Critical
 
@@ -259,10 +260,12 @@ Exit criteria:
   responder history. _Shipped (2026-06-14): host IP links open `/devices/<ip>` pages backed by
   `/api/devices/<ip>/detail`, including recent alerts, known destinations, DNS summaries, learned
   host profile values, active hours/countries, and matching response actions._
-- ✅ Add SIEM-friendly export formats: ECS-style JSON, syslog/CEF, or OpenTelemetry logs. _Shipped
-  (2026-06-16): `SyslogNotifier` streams alerts to a syslog collector in ECS (Elastic Common Schema
-  JSON) or CEF (ArcSight) payloads over UDP/TCP, with severity/facility mapping and RFC 5424 framing;
-  pure formatters live in `alerts/siem.py` and the channel participates in `sentinelpi --check`._
+- ✅ Add SIEM-friendly export formats: ECS-style JSON, syslog/CEF, **and** OpenTelemetry logs.
+  _Shipped (2026-06-16): `SyslogNotifier` streams alerts to a syslog collector in ECS (Elastic Common
+  Schema JSON) or CEF (ArcSight) payloads over UDP/TCP, with severity/facility mapping and RFC 5424
+  framing. OTLP added (2026-06-17): `OTLPNotifier` POSTs alerts as OpenTelemetry OTLP/HTTP JSON logs
+  to a collector's `/v1/logs` endpoint (no OTel SDK dependency). All three pure formatters live in
+  `alerts/siem.py` and every channel participates in `sentinelpi --check`._
 - ✅ Add backup/restore for the SQLite database and baseline state. _Shipped (2026-06-16):
   `storage/backup.py` plus `sentinelpi --backup`/`--restore` write and restore a compressed,
   self-describing snapshot of the database (all learned baselines + alerts + devices). Backups use

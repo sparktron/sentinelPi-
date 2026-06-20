@@ -50,7 +50,7 @@ from .inventory.device_tracker import DeviceTracker
 from .alerts.manager import AlertManager
 from .alerts.notifiers import (
     ConsoleNotifier, FileNotifier, EmailNotifier, WebhookNotifier, NtfyNotifier, TwilioSMSNotifier,
-    SyslogNotifier, ForwardNotifier,
+    SyslogNotifier, OTLPNotifier, ForwardNotifier,
 )
 from .responders.manager import ResponderManager
 from .responders.firewall import FirewallResponder
@@ -365,6 +365,12 @@ class SentinelPi:
                         self.config.notifications.siem_transport,
                         self.config.notifications.siem_host,
                         self.config.notifications.siem_port)
+
+        # Optional: OpenTelemetry logs export via OTLP/HTTP
+        if self.config.notifications.otlp_enabled and self.config.notifications.otlp_endpoint:
+            self._alert_manager.add_notifier(OTLPNotifier(self.config))
+            logger.info("OpenTelemetry export enabled: OTLP/HTTP to %s",
+                        self.config.notifications.otlp_endpoint)
 
         # Sensor mode: forward alerts to a central collector (Phase 3).
         if self.config.cluster.role == "sensor" and self.config.cluster.collector_url:

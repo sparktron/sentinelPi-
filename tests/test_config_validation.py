@@ -81,6 +81,34 @@ def test_validate_config_accepts_valid_siem_settings():
     assert validate_config(config) == []
 
 
+def test_validate_config_rejects_invalid_otlp_settings():
+    config = Config()
+    n = config.notifications
+    n.otlp_enabled = True
+    n.otlp_endpoint = "collector:4318"          # missing http(s) scheme
+    n.otlp_min_severity = "urgent"
+    n.otlp_timeout_seconds = 0
+    n.otlp_headers = "Authorization: x"          # not a mapping
+
+    paths = _issue_paths(config)
+
+    assert "notifications.otlp_endpoint" in paths
+    assert "notifications.otlp_min_severity" in paths
+    assert "notifications.otlp_timeout_seconds" in paths
+    assert "notifications.otlp_headers" in paths
+
+
+def test_validate_config_accepts_valid_otlp_settings():
+    config = Config()
+    n = config.notifications
+    n.otlp_enabled = True
+    n.otlp_endpoint = "https://otel.example/v1/logs"
+    n.otlp_headers = {"Authorization": "Bearer token"}
+    n.otlp_min_severity = "medium"
+
+    assert validate_config(config) == []
+
+
 def test_validate_config_rejects_incomplete_sms_settings():
     config = Config()
     config.notifications.sms_enabled = True

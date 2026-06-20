@@ -127,6 +127,16 @@ class NotificationConfig:
     siem_facility: str = "local0"
     siem_min_severity: str = "low"
 
+    # OpenTelemetry export: POST alerts as OTLP/HTTP JSON logs to a collector's
+    # logs endpoint (e.g. http://otel-collector:4318/v1/logs). Optional headers
+    # carry auth (e.g. {"Authorization": "Bearer ..."}).
+    otlp_enabled: bool = False
+    otlp_endpoint: str = "http://127.0.0.1:4318/v1/logs"
+    otlp_headers: Dict[str, str] = field(default_factory=dict)
+    otlp_service_name: str = "sentinelpi"
+    otlp_timeout_seconds: int = 10
+    otlp_min_severity: str = "low"
+
 
 @dataclass
 class DashboardConfig:
@@ -742,6 +752,16 @@ def validate_config(config: Config) -> List[ConfigIssue]:
     check_port("notifications.siem_port", config.notifications.siem_port)
     if config.notifications.siem_enabled and not config.notifications.siem_host:
         add("notifications.siem_host", "is required when SIEM export is enabled")
+
+    check_severity("notifications.otlp_min_severity", config.notifications.otlp_min_severity)
+    check_positive_number("notifications.otlp_timeout_seconds", config.notifications.otlp_timeout_seconds)
+    if not isinstance(config.notifications.otlp_headers, dict):
+        add("notifications.otlp_headers", "must be a mapping of header name to value")
+    if config.notifications.otlp_enabled:
+        endpoint = config.notifications.otlp_endpoint
+        if not endpoint or not str(endpoint).startswith(("http://", "https://")):
+            add("notifications.otlp_endpoint",
+                "must be an http(s) URL (e.g. http://collector:4318/v1/logs) when OTLP export is enabled")
 
     check_non_negative_int("storage.retention_days", config.storage.retention_days)
     check_non_negative_int("storage.vacuum_interval_seconds", config.storage.vacuum_interval_seconds)

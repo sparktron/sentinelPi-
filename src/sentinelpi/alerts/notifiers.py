@@ -13,6 +13,7 @@ Available notifiers:
 - NtfyNotifier: ntfy push with Approve/Reject action buttons (optional).
 - TwilioSMSNotifier: SMS via Twilio Programmable Messaging (optional).
 - SyslogNotifier: SIEM export over syslog in ECS or CEF format (optional).
+- OTLPNotifier: OpenTelemetry logs export via OTLP/HTTP JSON (optional).
 """
 
 from __future__ import annotations
@@ -818,3 +819,85 @@ class SyslogNotifier(BaseNotifier):
         else:
             with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
                 sock.sendto(data, (self._host, self._port))
+
+
+class OTLPNotifier(BaseNotifier):
+    """
+    Exports alerts as OpenTelemetry logs via OTLP/HTTP (JSON).
+
+    POSTs each alert as an OTLP ``LogsData`` document to a collector's logs
+    endpoint (e.g. ``http://otel-collector:4318/v1/logs``). Async (queue +
+    worker) like the other network notifiers, so a slow or unreachable collector
+    never blocks detection. Uses plain JSON over HTTP — no OpenTelemetry SDK
+    dependency — matching how the ECS/CEF formatters are hand-built.
+    """
+
+    def __init__(self, config: Config) -> None:
+        from .. import __version__
+
+        n = config.notifications
+        self._endpoint = n.otlp_endpoint
+        self._headers = dict(n.otlp_headers or {})
+        self._service_name = n.otlp_service_name
+        self._timeout = n.otlp_timeout_seconds
+        self._min_severity = Severity(n.otlp_min_severity)
+        self._version = __version__
+        self._hostname = socket.gethostname()
+        self._queue: "queue.Queue[Alert]" = queue.Queue(maxsize=1000)
+        self._stop_event = threading.Event()
+        self._thread = threading.Thread(target=self._worker, daemon=True, name="OTLPNotifier")
+        self._thread.start()
+
+    def send(self, alert: Alert) -> None:
+        if not self._endpoint:
+            return
+        if alert.severity < self._min_severity:
+            return
+        if self._stop_event.is_set():
+            logger.warning("OTLP notifier is stopping — dropping log export.")
+            return
+        try:
+            self._queue.put_nowait(alert)
+        except queue.Full:
+            logger.warning("OTLP queue full — dropping log export.")
+
+    def _worker(self) -> None:
+        while not self._stop_event.is_set() or not self._queue.empty():
+            try:
+                alert = self._queue.get(timeout=0.5)
+            except queue.Empty:
+                continue
+            try:
+                self._export(alert)
+            except Exception as exc:
+                logger.warning("OTLP export failed: %s", exc)
+
+    def close(self, timeout: float = 5.0) -> None:
+        self._stop_event.set()
+        self._thread.join(timeout=timeout)
+        if self._thread.is_alive():
+            logger.warning("OTLP notifier did not stop cleanly.")
+
+    def preflight(self) -> tuple[bool, str]:
+        if not self._endpoint:
+            return (True, "disabled")
+        try:
+            self._export(_preflight_alert())
+        except Exception as exc:
+            return (False, f"POST {self._endpoint}: {exc}")
+        return (True, f"exported test log to {self._endpoint}")
+
+    def _export(self, alert: Alert) -> None:
+        """Build and POST the OTLP/HTTP JSON logs payload. Raises on failure."""
+        import requests
+        from . import siem
+
+        payload = siem.format_otlp(
+            alert,
+            service_name=self._service_name,
+            product_version=self._version,
+            host_name=self._hostname,
+        )
+        headers = {"Content-Type": "application/json", **self._headers}
+        resp = requests.post(self._endpoint, json=payload, headers=headers, timeout=self._timeout)
+        resp.raise_for_status()

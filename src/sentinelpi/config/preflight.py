@@ -154,7 +154,7 @@ def _module_available(name: str) -> bool:
 def _check_notifiers(config) -> List[CheckResult]:
     from ..alerts.notifiers import (
         EmailNotifier, WebhookNotifier, NtfyNotifier, TwilioSMSNotifier, SyslogNotifier,
-        ForwardNotifier,
+        OTLPNotifier, ForwardNotifier,
     )
 
     n = config.notifications
@@ -171,6 +171,8 @@ def _check_notifiers(config) -> List[CheckResult]:
         specs.append(("notifier:twilio-sms", lambda: TwilioSMSNotifier(config)))
     if n.siem_enabled and n.siem_host:
         specs.append(("notifier:siem", lambda: SyslogNotifier(config)))
+    if n.otlp_enabled and n.otlp_endpoint:
+        specs.append(("notifier:otlp", lambda: OTLPNotifier(config)))
     if config.cluster.role == "sensor" and config.cluster.collector_url:
         specs.append(("notifier:forward", lambda: ForwardNotifier(config)))
 

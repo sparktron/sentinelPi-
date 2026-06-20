@@ -84,8 +84,8 @@ English description, a confidence score, and a recommended next step.
   (token login, session cookie)
 - **Alert management** — dedup, cooldowns, severity levels, acknowledge & mute
 - **Structured outputs** — console, rotating JSON log, SQLite, optional email, Twilio SMS,
-  webhooks & ntfy push (with Approve/Reject buttons for responder approvals), and SIEM export over
-  syslog in ECS or CEF format
+  webhooks & ntfy push (with Approve/Reject buttons for responder approvals), SIEM export over
+  syslog in ECS or CEF format, and OpenTelemetry logs via OTLP/HTTP
 - **Daily / weekly reports** — rolled-up summaries of what happened on the network
 
 **🌐 Whole-network coverage**
@@ -220,7 +220,7 @@ finds instead of starting with a bad config.
 
 `--check` starts with the same static validation, then runs active preflight checks for configured
 network notifiers and responders. Email connects/authenticates without sending mail; webhook, ntfy,
-SMS, SIEM export, and sensor forwarding send a clearly labelled test alert; responders only call side-effect-free
+SMS, SIEM export, OTLP export, and sensor forwarding send a clearly labelled test alert; responders only call side-effect-free
 `plan()` and report what they would do.
 
 **Backup & restore.** `--backup` writes a single compressed, self-describing snapshot of the
@@ -271,7 +271,7 @@ with a safe default — you only configure what differs for your network.
 | `monitoring.packet_capture_enabled` | `true` for full capture, `false` for `/proc`-only (no root) |
 | `monitoring.self_monitoring_*` | Watchdog checks for worker death, stale capture, threat-intel refresh, queue saturation, and low disk |
 | `dashboard` | Host/port and access token |
-| `notifications` | Email, Twilio SMS, webhook, ntfy, SIEM export (syslog ECS/CEF), and daily/weekly report settings |
+| `notifications` | Email, Twilio SMS, webhook, ntfy, SIEM export (syslog ECS/CEF), OpenTelemetry (OTLP/HTTP), and daily/weekly report settings |
 | `threat_intel` | Enable blocklist feeds and matching |
 | `response` | Optional active-response layer (off + dry-run by default) |
 | `multi_sensor` | Collector/sensor mTLS forwarding |

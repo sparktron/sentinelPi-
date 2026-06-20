@@ -262,6 +262,30 @@ Alert severity is mapped to the syslog severity (and to the 0-10 CEF scale / num
 `sentinelpi --check` to send a labelled test event through the configured transport before relying
 on it.
 
+### OpenTelemetry export (OTLP/HTTP logs)
+
+Export alerts as OpenTelemetry logs to any OTLP/HTTP logs endpoint — an
+[OpenTelemetry Collector](https://opentelemetry.io/docs/collector/), Grafana Alloy/Loki, or a
+vendor backend. Each alert is POSTed as an OTLP `LogsData` JSON document to the endpoint's `/v1/logs`
+path. SentinelPi builds the JSON directly (no OpenTelemetry SDK dependency), so it stays light on a
+Pi.
+
+```yaml
+notifications:
+  otlp_enabled: true
+  otlp_endpoint: "http://otel-collector:4318/v1/logs"
+  otlp_headers:
+    Authorization: "Bearer <token>"      # optional auth headers
+  otlp_service_name: "sentinelpi"
+  otlp_timeout_seconds: 10
+  otlp_min_severity: low
+```
+
+Alert severity maps to the OTLP `SeverityNumber`/`SeverityText` (INFO/WARN/ERROR/FATAL bands); the
+alert title becomes the log body, and host/category/confidence/etc. become log attributes
+(`source.ip`, `event.category`, `sentinelpi.confidence`, …). Run `sentinelpi --check` to POST a
+labelled test log to the collector before relying on it.
+
 ## Whole-Network Coverage (Phase 3)
 
 By default SentinelPi sees its own host plus whatever the LAN segment lets it

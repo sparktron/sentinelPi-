@@ -298,6 +298,16 @@ notifications:
   siem_facility: local0           # syslog facility: user, daemon, local0-local7
   siem_min_severity: low
 
+  # OpenTelemetry export: POST alerts as OTLP/HTTP JSON logs to a collector's
+  # logs endpoint (OpenTelemetry Collector, Grafana Loki/Alloy, etc.). No OTel
+  # SDK needed — plain JSON over HTTP.
+  otlp_enabled: false
+  otlp_endpoint: "http://127.0.0.1:4318/v1/logs"
+  otlp_headers: {}                # e.g. {"Authorization": "Bearer <token>"}
+  otlp_service_name: sentinelpi
+  otlp_timeout_seconds: 10
+  otlp_min_severity: low
+
 # =============================================================================
 # REPORTING
 # =============================================================================
