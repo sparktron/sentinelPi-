@@ -325,10 +325,11 @@ started. They are infrastructure/operations work rather than detection features.
   GitHub release with a changelog generated from git history, and attach the built sdist/wheel.
   Establish a lightweight release process (e.g. a tag-triggered CI job that builds and publishes the
   artifacts) for subsequent versions.
-- **Enforce a test-coverage gate.** CI already produces coverage (`--cov` + `coverage.xml`) but it is
-  informational. Pick a baseline threshold from the current measured coverage and fail the build
-  below it (`pytest --cov-fail-under=N`), so the test investment can't silently erode. Raise the
-  threshold opportunistically as coverage improves.
+- ✅ **Enforce a test-coverage gate.** _Shipped (2026-06-17): `[tool.coverage.report] fail_under = 70`
+  in `pyproject.toml` makes any coverage run (CI, or local `pytest --cov`) fail below 70% total —
+  ~3-4 points under the current ~74% line coverage to absorb run-to-run variance. The existing CI
+  coverage step enforces it with no command change; a plain `pytest` run stays ungated. Ratchet the
+  floor upward as coverage improves._
 - ✅ **Turnkey deployment packaging.** _Shipped (2026-06-17): the systemd path was already in place
   (hardened `systemd/sentinelpi.service` + `scripts/install.sh`); added `scripts/uninstall.sh` for
   clean teardown, plus a containerized path — a multi-stage `Dockerfile` (slim image, non-root

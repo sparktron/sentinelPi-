@@ -83,3 +83,15 @@ no_implicit_optional = true
 [[tool.mypy.overrides]]
 module = ["scapy.*", "waitress.*", "maxminddb.*"]
 ignore_missing_imports = true
+
+[tool.coverage.run]
+source = ["sentinelpi"]
+
+[tool.coverage.report]
+# Coverage gate: fail a coverage run (CI, or local `pytest --cov`) below this
+# floor so the test investment can't silently erode. Set a few points under the
+# current measured total (~74%) to absorb run-to-run variance; ratchet upward as
+# coverage improves. Has no effect on a plain `pytest` run (no report generated).
+fail_under = 70
+show_missing = true
+precision = 1

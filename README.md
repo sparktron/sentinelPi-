@@ -422,9 +422,12 @@ python -m pytest tests/ -v
 python -m compileall -q src tests
 ruff check src tests
 
-# With coverage
+# With coverage (CI enforces a minimum via fail_under in pyproject.toml)
 python -m pytest tests/ --cov=sentinelpi --cov-report=term-missing
 ```
+
+CI fails the build if total coverage drops below the `fail_under` floor in
+`[tool.coverage.report]` (currently 70%). A plain `pytest` run (without `--cov`) is not gated.
 
 Fixtures simulate real attack traffic so detectors are tested end-to-end:
 
