@@ -11,7 +11,7 @@ port scans, C2 beaconing, DNS abuse, lateral movement, SSH brute force, and more
 [![Python](https://img.shields.io/badge/python-3.11%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/)
 [![Platform](https://img.shields.io/badge/platform-Raspberry%20Pi%20%7C%20Linux-C51A4A?logo=raspberrypi&logoColor=white)](#requirements)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![CI](https://github.com/sparktron/sentinelPi-/actions/workflows/ci.yml/badge.svg)](https://github.com/sparktron/sentinelPi-/actions/workflows/ci.yml)
+[![CI](https://github.com/sparktron/sentinelPi/actions/workflows/ci.yml/badge.svg)](https://github.com/sparktron/sentinelPi/actions/workflows/ci.yml)
 [![Defensive only](https://img.shields.io/badge/scope-defensive%20only-blue.svg)](#safety-boundaries)
 
 </div>
@@ -146,8 +146,8 @@ The installer creates a locked-down `sentinelpi` system user, sets up a virtuale
 and registers the systemd service.
 
 ```bash
-git clone https://github.com/sparktron/sentinelPi-.git
-cd sentinelPi-
+git clone https://github.com/sparktron/sentinelPi.git
+cd sentinelPi
 
 # Install as a systemd service
 sudo bash scripts/install.sh
@@ -174,8 +174,8 @@ A multi-stage [`Dockerfile`](Dockerfile) builds a slim image that runs as a non-
 user, and [`docker-compose.yml`](docker-compose.yml) wires it up for LAN monitoring:
 
 ```bash
-git clone https://github.com/sparktron/sentinelPi-.git
-cd sentinelPi-
+git clone https://github.com/sparktron/sentinelPi.git
+cd sentinelPi
 
 # Edit ./config/sentinelpi.yaml for your network first (it is mounted into the container)
 docker compose up -d --build
@@ -191,8 +191,8 @@ runs as root. The database and baselines persist in named volumes. For a capabil
 ### Development / testing
 
 ```bash
-git clone https://github.com/sparktron/sentinelPi-.git
-cd sentinelPi-
+git clone https://github.com/sparktron/sentinelPi.git
+cd sentinelPi
 
 # Create the virtual environment and install dependencies
 bash scripts/setup_venv.sh
