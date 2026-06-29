@@ -36,7 +36,60 @@ alert explainability across every detector) shipped, along with the last loose e
 health summaries, a packaging smoke test in CI, and the config-doctor environment probe. The
 "Proposed New Features" backlog is also fully shipped (host suspicion-trend charts, open-port
 rollups, dashboard health badges, the incident-timeline narrative, and OpenTelemetry/OTLP export).
-No tracked work remains open.
+A 2026-06-29 follow-up review opened a small corrective backlog below.
+
+### Follow-Up Review Items (2026-06-29)
+
+1. **SIEM exports can reverse source and destination semantics for some detector alerts.**
+   **Status: open.**
+
+   `alerts/siem.py` currently maps `affected_host` to ECS/CEF/OTLP source fields and
+   `related_host` to destination fields for every alert category. That matches outbound-connection
+   alerts, but not detector alerts where `affected_host` is the target and `related_host` is the
+   actor, such as port-scan and some lateral-movement alerts. SIEM triage and any downstream
+   automation can therefore identify the scanned target as the source.
+
+   Evidence: `src/sentinelpi/alerts/siem.py:142-150`,
+   `src/sentinelpi/alerts/siem.py:195-201`, and
+   `src/sentinelpi/detectors/port_scan_detector.py:157-161`.
+
+   Plan:
+   - Add a small source/destination normalization helper for SIEM formatting.
+   - Cover category-specific cases where `related_host` is the actor and `affected_host` is the
+     target.
+   - Update ECS, CEF, and OTLP tests to use detector-shaped alerts, not only hand-built alerts whose
+     fields already match the formatter's current assumption.
+
+2. **Suspicion-trend charts return the oldest capped points instead of the latest capped points.**
+   **Status: open.**
+
+   `get_suspicion_history()` returns rows ordered ascending with `LIMIT 500`. Once a noisy host has
+   more than 500 suspicion points inside the requested window, the host page charts the first 500
+   points in that period and drops the newest/current part of the trend.
+
+   Evidence: `src/sentinelpi/storage/database.py:678-699` and
+   `src/sentinelpi/ui/dashboard.py:388-405`.
+
+   Plan:
+   - Select the newest `limit` rows first, then reverse them before returning so the API still emits
+     oldest-to-newest data for charting.
+   - Add a regression test with more than `limit` points that proves the latest point is retained.
+
+3. **Packet-capture preflight can report OK for a runtime the daemon will not use.**
+   **Status: open.**
+
+   The config-doctor environment probe reports packet capture as OK when either `dumpcap` exists or
+   the `scapy` module imports, but `PacketCapture.start()` only gates on Scapy availability and does
+   not use `dumpcap`. An environment with `dumpcap` present but Scapy missing or broken can pass
+   `sentinelpi --check` and still fall back to `/proc` polling at daemon startup.
+
+   Evidence: `src/sentinelpi/config/preflight.py:124-130` and
+   `src/sentinelpi/capture/packet_capture.py:29-39`.
+
+   Plan:
+   - Align the preflight check with the actual runtime dependency (`SCAPY_AVAILABLE`).
+   - Only mention `dumpcap` if packet capture gains a real dumpcap-backed path.
+   - Add a preflight regression test that simulates `dumpcap` present with Scapy unavailable.
 
 ### Critical
 
@@ -317,8 +370,9 @@ Exit criteria:
 
 ## Future Directions
 
-Every item above is shipped; these are candidate next steps beyond the original review, not yet
-started. They are infrastructure/operations work rather than detection features.
+The original roadmap items above are shipped; these are candidate next steps beyond that review,
+not yet started. They are infrastructure/operations work rather than detection features. The
+2026-06-29 follow-up review items are tracked separately above.
 
 - **Tag a v1.0.0 release.** `pyproject` is already at `1.0.0`, the wheel builds and installs cleanly
   (packaging smoke test is green in CI), and `master` is healthy. Cut an annotated `v1.0.0` tag and a

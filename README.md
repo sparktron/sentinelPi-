@@ -38,6 +38,9 @@ step** — not a wall of packets.
 It runs for months on a Pi, works **without root**, stays **quiet** (no alert floods), and can even
 **act** on the worst threats once you trust it to.
 
+Current development follow-ups from the latest code review are tracked in
+[docs/DEVELOPMENT_ROADMAP.md](docs/DEVELOPMENT_ROADMAP.md).
+
 ## ✨ Highlights
 
 |  |  |
