@@ -117,7 +117,7 @@ def _check_environment(config) -> List[CheckResult]:
                 "env:file-integrity", "ok",
                 f"all {len(m.file_integrity_paths)} monitored path(s) present"))
     if m.packet_capture_enabled:
-        if shutil.which("dumpcap") or _module_available("scapy"):
+        if _module_available("scapy"):
             results.append(CheckResult("env:packet-capture", "ok", "scapy available"))
         else:
             results.append(CheckResult(

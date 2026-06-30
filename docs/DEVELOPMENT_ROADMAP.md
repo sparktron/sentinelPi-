@@ -76,7 +76,7 @@ A 2026-06-29 follow-up review opened a small corrective backlog below.
    - Add a regression test with more than `limit` points that proves the latest point is retained.
 
 3. **Packet-capture preflight can report OK for a runtime the daemon will not use.**
-   **Status: open.**
+   **Status: fixed.**
 
    The config-doctor environment probe reports packet capture as OK when either `dumpcap` exists or
    the `scapy` module imports, but `PacketCapture.start()` only gates on Scapy availability and does

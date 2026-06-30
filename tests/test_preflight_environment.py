@@ -68,6 +68,24 @@ def test_environment_probes_firewall_binary():
     assert "not on PATH" in by_name["env:firewall"].detail
 
 
+def test_packet_capture_warns_when_only_dumpcap_present_but_scapy_missing(monkeypatch):
+    """dumpcap present but scapy unavailable must still warn — daemon uses scapy."""
+    import shutil
+    import sentinelpi.config.preflight as preflight_mod
+
+    # Make shutil.which("dumpcap") return a path so it looks like dumpcap is installed,
+    # but _module_available("scapy") returns False (scapy not importable).
+    monkeypatch.setattr(shutil, "which", lambda name: "/usr/bin/dumpcap" if name == "dumpcap" else None)
+    monkeypatch.setattr(preflight_mod, "_module_available", lambda name: False)
+
+    config = Config()
+    config.monitoring.packet_capture_enabled = True
+
+    by_name = _results_by_name(_check_environment(config))
+    assert by_name["env:packet-capture"].status == "warn"
+    assert "scapy" in by_name["env:packet-capture"].detail
+
+
 def test_environment_warnings_do_not_fail_preflight(tmp_path):
     config = Config()
     config.network.interfaces = ["eth0"]
