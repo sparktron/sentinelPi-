@@ -41,7 +41,7 @@ A 2026-06-29 follow-up review opened a small corrective backlog below.
 ### Follow-Up Review Items (2026-06-29)
 
 1. **SIEM exports can reverse source and destination semantics for some detector alerts.**
-   **Status: open.**
+   **Status: fixed.**
 
    `alerts/siem.py` currently maps `affected_host` to ECS/CEF/OTLP source fields and
    `related_host` to destination fields for every alert category. That matches outbound-connection

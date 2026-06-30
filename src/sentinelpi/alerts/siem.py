@@ -21,6 +21,26 @@ from datetime import timezone
 
 from ..models import Alert, AlertCategory, Severity
 
+# Alert categories where affected_host is the victim/target and related_host is
+# the actor (scanner, mover). SIEM "source" should map to the actor so downstream
+# triage identifies the attacker, not the scanned target, as the initiator.
+_ACTOR_IN_RELATED: frozenset[AlertCategory] = frozenset({
+    AlertCategory.PORT_SCAN,
+    AlertCategory.LATERAL_MOVEMENT,
+})
+
+
+def _siem_source_dest(alert: Alert) -> tuple[str, str, str]:
+    """Return (source_ip, source_mac, destination_ip) with correct actor semantics.
+
+    For PORT_SCAN and LATERAL_MOVEMENT alerts the scanner/mover lives in
+    related_host and the target in affected_host — invert so SIEMs see the
+    attacker as source and the victim as destination.
+    """
+    if alert.category in _ACTOR_IN_RELATED and alert.related_host:
+        return alert.related_host, "", alert.affected_host
+    return alert.affected_host, alert.affected_mac, alert.related_host
+
 # Severity -> RFC 5424 syslog severity code (lower is more severe).
 SYSLOG_SEVERITY: dict[Severity, int] = {
     Severity.INFO:     6,   # informational
@@ -139,15 +159,16 @@ def format_ecs(alert: Alert, *, product_version: str = "1.0.0") -> dict:
             "dedup_key": alert.dedup_key,
         },
     }
-    if alert.affected_host:
-        doc["source"] = {"ip": alert.affected_host}
+    src_ip, src_mac, dst_ip = _siem_source_dest(alert)
+    if src_ip:
+        doc["source"] = {"ip": src_ip}
         doc["host"] = {"ip": alert.affected_host}
-        if alert.affected_mac:
-            doc["source"]["mac"] = alert.affected_mac
-    if alert.affected_mac and "source" not in doc:
-        doc["host"] = {"mac": alert.affected_mac}
-    if alert.related_host:
-        doc["destination"] = {"ip": alert.related_host}
+        if src_mac:
+            doc["source"]["mac"] = src_mac
+    if src_mac and "source" not in doc:
+        doc["host"] = {"mac": src_mac}
+    if dst_ip:
+        doc["destination"] = {"ip": dst_ip}
     if alert.extra:
         doc["sentinelpi"]["extra"] = alert.extra
     return doc
@@ -195,12 +216,13 @@ def format_cef(alert: Alert, *, product_version: str = "1.0.0") -> str:
         ("rt", _aware_utc_iso(alert)),
         ("cat", alert.category.value),
     ]
-    if alert.affected_host:
-        pairs.append(("src", alert.affected_host))
-    if alert.affected_mac:
-        pairs.append(("smac", alert.affected_mac))
-    if alert.related_host:
-        pairs.append(("dst", alert.related_host))
+    src_ip, src_mac, dst_ip = _siem_source_dest(alert)
+    if src_ip:
+        pairs.append(("src", src_ip))
+    if src_mac:
+        pairs.append(("smac", src_mac))
+    if dst_ip:
+        pairs.append(("dst", dst_ip))
     if alert.description:
         pairs.append(("msg", alert.description))
     pairs.append(("cn1", str(round(alert.confidence, 3))))
@@ -277,6 +299,7 @@ def format_otlp(
     POST to an OTLP logs endpoint (``/v1/logs``).
     """
     nanos = _unix_nanos(alert)
+    src_ip, src_mac, dst_ip = _siem_source_dest(alert)
     log_record = {
         "timeUnixNano": nanos,
         "observedTimeUnixNano": nanos,
@@ -288,9 +311,9 @@ def format_otlp(
             "event.category": alert.category.value,
             "event.action": alert.category.value,
             "event.severity": alert.severity.value,
-            "source.ip": alert.affected_host,
-            "source.mac": alert.affected_mac,
-            "destination.ip": alert.related_host,
+            "source.ip": src_ip,
+            "source.mac": src_mac,
+            "destination.ip": dst_ip,
             "sentinelpi.confidence": round(alert.confidence, 3),
             "sentinelpi.confidence_rationale": alert.confidence_rationale,
             "sentinelpi.recommended_action": alert.recommended_action,

@@ -37,10 +37,23 @@ def test_format_ecs_maps_core_fields():
     assert doc["log"]["level"] == "high"
     assert doc["observer"]["product"] == "SentinelPi"
     assert doc["observer"]["version"] == "1.2.3"
-    assert doc["source"]["ip"] == "192.168.1.50"
-    assert doc["source"]["mac"] == "aa:bb:cc:dd:ee:ff"
-    assert doc["destination"]["ip"] == "192.168.1.1"
+    # PORT_SCAN: related_host is the scanner (actor → source); affected_host is the target (→ destination).
+    assert doc["source"]["ip"] == "192.168.1.1"
+    assert doc["destination"]["ip"] == "192.168.1.50"
     assert doc["sentinelpi"]["recommended_action"] == "Investigate the host"
+
+
+def test_format_ecs_outbound_alert_standard_mapping():
+    """For non-detector categories affected_host is the actor and maps to source."""
+    doc = siem.format_ecs(_alert(
+        category=AlertCategory.CONNECTION_ANOMALY,
+        affected_host="10.0.0.5",
+        affected_mac="11:22:33:44:55:66",
+        related_host="8.8.8.8",
+    ))
+    assert doc["source"]["ip"] == "10.0.0.5"
+    assert doc["source"]["mac"] == "11:22:33:44:55:66"
+    assert doc["destination"]["ip"] == "8.8.8.8"
 
 
 def test_format_ecs_converts_naive_and_other_tz_to_utc():
@@ -60,11 +73,22 @@ def test_format_cef_header_and_extension():
     line = siem.format_cef(_alert(), product_version="9.9.9")
 
     assert line.startswith("CEF:0|SentinelPi|SentinelPi|9.9.9|port_scan|Port scan detected|8|")
-    assert "src=192.168.1.50" in line
-    assert "smac=aa:bb:cc:dd:ee:ff" in line
-    assert "dst=192.168.1.1" in line
+    # PORT_SCAN: scanner (related_host) is src; scanned target (affected_host) is dst.
+    assert "src=192.168.1.1" in line
+    assert "dst=192.168.1.50" in line
     assert "cs1=Investigate the host" in line
     assert "cs1Label=recommendedAction" in line
+
+
+def test_format_cef_lateral_movement_swaps_source_dest():
+    line = siem.format_cef(_alert(
+        category=AlertCategory.LATERAL_MOVEMENT,
+        affected_host="10.0.0.20",   # target
+        related_host="10.0.0.5",     # mover/actor
+        affected_mac="",
+    ))
+    assert "src=10.0.0.5" in line
+    assert "dst=10.0.0.20" in line
 
 
 def test_format_cef_escapes_special_characters():
@@ -163,12 +187,24 @@ def test_format_otlp_envelope_and_severity():
 
 def test_format_otlp_attribute_value_types():
     attrs = _otlp_attrs(siem.format_otlp(_alert(extra={"ports": [22, 80]})))
-    assert attrs["source.ip"] == {"stringValue": "192.168.1.50"}
-    assert attrs["destination.ip"] == {"stringValue": "192.168.1.1"}
+    # PORT_SCAN: scanner (related_host) → source.ip; target (affected_host) → destination.ip.
+    assert attrs["source.ip"] == {"stringValue": "192.168.1.1"}
+    assert attrs["destination.ip"] == {"stringValue": "192.168.1.50"}
     assert attrs["sentinelpi.confidence"] == {"doubleValue": 0.85}
     # Nested extra is serialized as a JSON string value.
     assert attrs["sentinelpi.extra"]["stringValue"]
     assert json.loads(attrs["sentinelpi.extra"]["stringValue"]) == {"ports": [22, 80]}
+
+
+def test_format_otlp_port_scan_source_is_scanner():
+    """Detector alert: scanner is source, scanned host is destination in OTLP."""
+    attrs = _otlp_attrs(siem.format_otlp(_alert(
+        category=AlertCategory.PORT_SCAN,
+        affected_host="192.168.1.50",  # target
+        related_host="192.168.1.1",    # scanner
+    )))
+    assert attrs["source.ip"] == {"stringValue": "192.168.1.1"}
+    assert attrs["destination.ip"] == {"stringValue": "192.168.1.50"}
 
 
 def test_format_otlp_resource_attributes():
